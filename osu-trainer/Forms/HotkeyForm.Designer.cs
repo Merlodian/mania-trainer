@@ -244,7 +244,7 @@
             this.label3.Padding = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.label3.Size = new System.Drawing.Size(110, 24);
             this.label3.TabIndex = 24;
-            this.label3.Text = "Execute Profile 4";
+            this.label3.Text = "Dan Button 4";
             this.label3.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // label2
@@ -259,7 +259,7 @@
             this.label2.Padding = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.label2.Size = new System.Drawing.Size(110, 24);
             this.label2.TabIndex = 24;
-            this.label2.Text = "Execute Profile 3";
+            this.label2.Text = "Dan Button 3";
             this.label2.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // label1
@@ -274,7 +274,7 @@
             this.label1.Padding = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.label1.Size = new System.Drawing.Size(110, 24);
             this.label1.TabIndex = 24;
-            this.label1.Text = "Execute Profile 2";
+            this.label1.Text = "Dan Button 2";
             this.label1.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // label9
@@ -439,7 +439,7 @@
             this.SpeedLabel.Padding = new System.Windows.Forms.Padding(3, 4, 3, 4);
             this.SpeedLabel.Size = new System.Drawing.Size(110, 24);
             this.SpeedLabel.TabIndex = 24;
-            this.SpeedLabel.Text = "Execute Profile 1";
+            this.SpeedLabel.Text = "Dan Button 1";
             this.SpeedLabel.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
             // 
             // HotkeyForm

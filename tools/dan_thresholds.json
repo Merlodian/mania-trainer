@@ -1,0 +1,719 @@
+{
+  "engine": "xdc1.dll",
+  "rate": 1.0,
+  "method": "threshold = mean xdc1 rating of every chart of that dan (maps, courses, samples)",
+  "thresholds": {
+    "1st": 28.7147,
+    "2nd": 32.2334,
+    "3rd": 33.5844,
+    "4th": 37.3902,
+    "5th": 42.4576,
+    "6th": 45.8667,
+    "7th": 47.7026,
+    "8th": 51.5435,
+    "9th": 54.019,
+    "10th": 56.4295,
+    "Alpha": 59.1441,
+    "Beta": 61.3607,
+    "Gamma": 64.8469,
+    "Delta": 70.558,
+    "Epsilon": 79.3652,
+    "Zeta": 84.8299,
+    "Eta": 90.1403,
+    "Theta": 98.1759,
+    "Iota": 104.1413,
+    "Kappa": 108.2573
+  },
+  "summary": [
+    {
+      "dan": "1st",
+      "count": 13,
+      "mean": 28.714678006115467,
+      "median": 30.338948642904,
+      "stdev": 3.346270782154312,
+      "min": 21.88830843508717,
+      "max": 31.087149364209548,
+      "by_category": {
+        "Course": {
+          "count": 5,
+          "mean": 30.54345714671187
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 21.88830843508717
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 30.338948642904
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 31.087149364209548
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 26.97235773077012
+        }
+      }
+    },
+    {
+      "dan": "2nd",
+      "count": 13,
+      "mean": 32.23343986116799,
+      "median": 32.30007890111871,
+      "stdev": 1.4696275215525527,
+      "min": 30.433210359496567,
+      "max": 33.98275513340219,
+      "by_category": {
+        "Course": {
+          "count": 5,
+          "mean": 33.27778069607048
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 33.98275513340219
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 30.784353328039845
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 31.122588536477082
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 30.433210359496567
+        }
+      }
+    },
+    {
+      "dan": "3rd",
+      "count": 16,
+      "mean": 33.58436621537098,
+      "median": 33.59003068233359,
+      "stdev": 3.7107875629537483,
+      "min": 27.123609170942853,
+      "max": 40.35663897039206,
+      "by_category": {
+        "Course": {
+          "count": 6,
+          "mean": 35.634738218139844
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 30.997038457476624
+        },
+        "Map (MissingMap)": {
+          "count": 1,
+          "mean": 40.35663897039206
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 33.424902847422715
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 34.548325878771756
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 27.123609170942853
+        }
+      }
+    },
+    {
+      "dan": "4th",
+      "count": 15,
+      "mean": 37.39019420188114,
+      "median": 39.54621335958073,
+      "stdev": 3.3287275322234606,
+      "min": 29.219605976212772,
+      "max": 39.97776375960671,
+      "by_category": {
+        "Course": {
+          "count": 6,
+          "mean": 39.7110419517417
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 32.15946749014613
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 37.25977197959763
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 39.79452706109663
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 35.99983038296999
+        }
+      }
+    },
+    {
+      "dan": "5th",
+      "count": 14,
+      "mean": 42.45756694158335,
+      "median": 43.65857284808038,
+      "stdev": 2.5018718616997466,
+      "min": 37.94951608359989,
+      "max": 44.71826206432665,
+      "by_category": {
+        "Course": {
+          "count": 6,
+          "mean": 43.934987820897526
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 38.20152194475592
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 43.92179751438154
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 43.72775715608156
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 39.54692851317188
+        }
+      }
+    },
+    {
+      "dan": "6th",
+      "count": 15,
+      "mean": 45.866713299210694,
+      "median": 47.60254128550744,
+      "stdev": 3.0179505447708945,
+      "min": 40.698424491380074,
+      "max": 48.08329985896348,
+      "by_category": {
+        "Course": {
+          "count": 7,
+          "mean": 47.796382868417176
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 41.746693024751295
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 46.34292956409104
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 47.92496262439768
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 40.698424491380074
+        }
+      }
+    },
+    {
+      "dan": "7th",
+      "count": 14,
+      "mean": 47.70264593417007,
+      "median": 48.938779133916626,
+      "stdev": 2.8286430502159075,
+      "min": 39.730733596205226,
+      "max": 49.86047025732103,
+      "by_category": {
+        "Course": {
+          "count": 5,
+          "mean": 49.79547052806554
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 43.52653027788705
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 48.069367052838494
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 49.12381806865256
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 46.94686468070502
+        }
+      }
+    },
+    {
+      "dan": "8th",
+      "count": 15,
+      "mean": 51.54347341162063,
+      "median": 51.895060555433304,
+      "stdev": 1.3686299684545866,
+      "min": 48.040993702626,
+      "max": 53.01015919383083,
+      "by_category": {
+        "Course": {
+          "count": 5,
+          "mean": 52.69598542606627
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 51.48850477105331
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 50.97710523094989
+        },
+        "Stamina": {
+          "count": 3,
+          "mean": 50.85888898465507
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 50.33789115747662
+        }
+      }
+    },
+    {
+      "dan": "9th",
+      "count": 14,
+      "mean": 54.01903818938171,
+      "median": 54.01670667808972,
+      "stdev": 1.6051406316908914,
+      "min": 51.58658106116477,
+      "max": 57.22496646763361,
+      "by_category": {
+        "Course": {
+          "count": 5,
+          "mean": 55.16116421031957
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 52.512376214770136
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 52.8808688122893
+        },
+        "Stamina": {
+          "count": 3,
+          "mean": 53.92762189010534
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 53.94567893765563
+        }
+      }
+    },
+    {
+      "dan": "10th",
+      "count": 10,
+      "mean": 56.4294976309284,
+      "median": 56.953761937521136,
+      "stdev": 1.4701107187750357,
+      "min": 53.34706739596758,
+      "max": 57.645106190590475,
+      "by_category": {
+        "Course": {
+          "count": 4,
+          "mean": 57.58384195666323
+        },
+        "Jack": {
+          "count": 1,
+          "mean": 55.92132342190286
+        },
+        "Map (MissingMap)": {
+          "count": 1,
+          "mean": 56.923765685229185
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 53.92065515587632
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 56.289450873933355
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 56.98375818981308
+        }
+      }
+    },
+    {
+      "dan": "Alpha",
+      "count": 22,
+      "mean": 59.14405409025368,
+      "median": 59.35649661663551,
+      "stdev": 1.8385756823574788,
+      "min": 55.245352983943626,
+      "max": 63.388204438144356,
+      "by_category": {
+        "Course": {
+          "count": 8,
+          "mean": 60.11027452790612
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 56.635650488413404
+        },
+        "Map (MissingMap)": {
+          "count": 5,
+          "mean": 59.287025874869116
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 58.89486356238196
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 59.397889661864376
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 58.67970323712679
+        }
+      }
+    },
+    {
+      "dan": "Beta",
+      "count": 18,
+      "mean": 61.360670188921226,
+      "median": 61.24258203100745,
+      "stdev": 1.0645469431073749,
+      "min": 59.49002277414228,
+      "max": 62.9813842787899,
+      "by_category": {
+        "Course": {
+          "count": 6,
+          "mean": 62.15960892174613
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 62.12410278299423
+        },
+        "Map (MissingMap)": {
+          "count": 2,
+          "mean": 61.700008263294315
+        },
+        "Speed": {
+          "count": 4,
+          "mean": 60.78766478422409
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 60.01358154583661
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 60.35418277447931
+        }
+      }
+    },
+    {
+      "dan": "Gamma",
+      "count": 15,
+      "mean": 64.8468830788826,
+      "median": 65.20838084893799,
+      "stdev": 1.614108463563042,
+      "min": 61.62918958690988,
+      "max": 67.00303479755502,
+      "by_category": {
+        "Course": {
+          "count": 4,
+          "mean": 65.88320169716009
+        },
+        "Jack": {
+          "count": 3,
+          "mean": 63.255373062998444
+        },
+        "Map (MissingMap)": {
+          "count": 1,
+          "mean": 66.96576259100371
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 65.20838084893799
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 63.19451450573703
+        },
+        "Tech": {
+          "count": 3,
+          "mean": 65.2109223017498
+        }
+      }
+    },
+    {
+      "dan": "Delta",
+      "count": 15,
+      "mean": 70.55800085967084,
+      "median": 70.56118911090083,
+      "stdev": 1.8676594359390686,
+      "min": 66.659646766982,
+      "max": 73.59447760092125,
+      "by_category": {
+        "Course": {
+          "count": 3,
+          "mean": 72.02270465214706
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 72.21002373391983
+        },
+        "Map (MissingMap)": {
+          "count": 4,
+          "mean": 70.00714789938877
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 70.56118911090083
+        },
+        "Stamina": {
+          "count": 2,
+          "mean": 68.50566977134336
+        },
+        "Tech": {
+          "count": 2,
+          "mean": 69.85977105436925
+        }
+      }
+    },
+    {
+      "dan": "Epsilon",
+      "count": 10,
+      "mean": 79.36521835322826,
+      "median": 79.50490305213192,
+      "stdev": 0.9488459135538879,
+      "min": 77.82145780262042,
+      "max": 80.77435696933729,
+      "by_category": {
+        "Course": {
+          "count": 4,
+          "mean": 79.5625340909173
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 79.54464313296407
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 78.44302544821106
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 78.99315431022919
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 80.43355569603405
+        }
+      }
+    },
+    {
+      "dan": "Zeta",
+      "count": 5,
+      "mean": 84.82990375566835,
+      "median": 85.22047088083781,
+      "stdev": 10.508404475543765,
+      "min": 68.63307611264162,
+      "max": 97.95109382502979,
+      "by_category": {
+        "Course": {
+          "count": 2,
+          "mean": 86.3527760804565
+        },
+        "Map (MissingMap)": {
+          "count": 3,
+          "mean": 83.81465553914292
+        }
+      }
+    },
+    {
+      "dan": "Eta",
+      "count": 5,
+      "mean": 90.14033978546345,
+      "median": 90.3686670499133,
+      "stdev": 1.5597368023467866,
+      "min": 87.81947408755177,
+      "max": 91.57402234433417,
+      "by_category": {
+        "Course": {
+          "count": 1,
+          "mean": 91.47477355149684
+        },
+        "Jack": {
+          "count": 1,
+          "mean": 91.57402234433417
+        },
+        "Speed": {
+          "count": 1,
+          "mean": 90.3686670499133
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 87.81947408755177
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 89.46476189402121
+        }
+      }
+    },
+    {
+      "dan": "Theta",
+      "count": 5,
+      "mean": 98.17589435208826,
+      "median": 97.80793269420923,
+      "stdev": 1.8813979912550634,
+      "min": 95.84957416351489,
+      "max": 100.45178252994121,
+      "by_category": {
+        "Course": {
+          "count": 1,
+          "mean": 99.67820343509426
+        },
+        "Jack": {
+          "count": 1,
+          "mean": 97.09197893768174
+        },
+        "Speed": {
+          "count": 1,
+          "mean": 100.45178252994121
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 95.84957416351489
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 97.80793269420923
+        }
+      }
+    },
+    {
+      "dan": "Iota",
+      "count": 7,
+      "mean": 104.1412891920259,
+      "median": 104.61383483080361,
+      "stdev": 3.3173000835021074,
+      "min": 100.06918052169193,
+      "max": 108.46243904304357,
+      "by_category": {
+        "Course": {
+          "count": 1,
+          "mean": 107.03132726426715
+        },
+        "Jack": {
+          "count": 2,
+          "mean": 100.9802100652789
+        },
+        "Speed": {
+          "count": 2,
+          "mean": 107.38481089348889
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 104.61383483080361
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 100.61382033157498
+        }
+      }
+    },
+    {
+      "dan": "Kappa",
+      "count": 5,
+      "mean": 108.25730309324922,
+      "median": 108.73524917831033,
+      "stdev": 1.5758456901797173,
+      "min": 105.55612348886426,
+      "max": 109.69959310900983,
+      "by_category": {
+        "Course": {
+          "count": 1,
+          "mean": 109.69959310900983
+        },
+        "Jack": {
+          "count": 1,
+          "mean": 108.75551985470624
+        },
+        "Speed": {
+          "count": 1,
+          "mean": 108.54002983535541
+        },
+        "Stamina": {
+          "count": 1,
+          "mean": 105.55612348886426
+        },
+        "Tech": {
+          "count": 1,
+          "mean": 108.73524917831033
+        }
+      }
+    }
+  ],
+  "skipped": [
+    {
+      "file": "Dan Beatmaps\\1st Pack - Pre-v1\\Various Artists - Dan ~ REFORM ~ 1st Pack Pre-v1 (DDMythical) [~ INTRO-1st ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - Pre-v1\\Various Artists - Dan ~ REFORM ~ 1st Pack Pre-v1 (DDMythical) [~ INTRO-2nd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - Pre-v1\\Various Artists - Dan ~ REFORM ~ 1st Pack Pre-v1 (DDMythical) [~ INTRO-3rd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - Sample v3\\Various Artists - Dan ~ REFORM ~ v3 SAMPLE Pack 1 (DDMythical) [INTRO-1st (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v1\\Various Artists - Dan ~ REFORM ~ 1st Pack (DDMythical) [~ INTRO-1st ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v1\\Various Artists - Dan ~ REFORM ~ 1st Pack (DDMythical) [~ INTRO-2nd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v1\\Various Artists - Dan ~ REFORM ~ 1st Pack (DDMythical) [~ INTRO-3rd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v2\\Various Artists - Dan ~ REFORM ~ 1st Pack v2 (DDMythical) [~ INTRO-1st ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v2\\Various Artists - Dan ~ REFORM ~ 1st Pack v2 (DDMythical) [~ INTRO-2nd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\1st Pack - v2\\Various Artists - Dan ~ REFORM ~ 1st Pack v2 (DDMythical) [~ INTRO-3rd ~ (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\2nd Pack - Sample v3\\Various Artists - Dan ~ REFORM ~ v3 SAMPLE Pack 2 (DDMythical) [INTRO-2nd (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\2nd Pack - Sample v3\\Various Artists - Dan ~ REFORM ~ v3 SAMPLE Pack 2 (DDMythical) [INTRO-3RD (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "Dan Beatmaps\\3rd Pack - Sample v3\\Various Artists - Dan ~ REFORM ~ v3 SAMPLE Pack 3 (DDMythical) [INTRO-3rd (Marathon)].osu",
+      "reason": "intro dan"
+    },
+    {
+      "file": "More Dans\\Individual Maps\\Various Artists - Dan ~ REFORM ~ FINAL (Ext.) Map Pack (CloverWisp) [delete].osu",
+      "reason": "unrecognised Version: delete"
+    }
+  ]
+}

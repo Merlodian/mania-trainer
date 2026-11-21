@@ -117,7 +117,7 @@ namespace osu_trainer
             this.textBox1.Size = new System.Drawing.Size(549, 32);
             this.textBox1.TabIndex = 2;
             this.textBox1.Text = "When you delete generated beatmaps, their mp3s will appear here.\r\nTip: Try search" +
-    "ing for \"osutrainer\" in game\r\n";
+    "ing for \"maniatrainer\" in game\r\n";
             // 
             // fileListView
             // 

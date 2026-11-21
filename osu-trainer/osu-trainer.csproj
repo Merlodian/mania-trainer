@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>osu_trainer</RootNamespace>
-    <AssemblyName>osu-trainer</AssemblyName>
+    <AssemblyName>mania-trainer</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -138,6 +138,7 @@
     <Reference Include="System.Buffers, Version=4.0.2.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
       <HintPath>..\packages\System.Buffers.4.4.0\lib\netstandard2.0\System.Buffers.dll</HintPath>
     </Reference>
+    <Reference Include="System.Configuration" />
     <Reference Include="System.Core" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Drawing.Common, Version=6.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -218,6 +219,7 @@
       <DependentUpon>DeleteMp3sForm.cs</DependentUpon>
     </Compile>
     <Compile Include="DifficultyCalculator.cs" />
+    <Compile Include="Controls\DarkMenuRenderer.cs" />
     <Compile Include="Controls\DoubleBufferedPanel.cs">
       <SubType>Component</SubType>
     </Compile>
@@ -230,12 +232,6 @@
     <Compile Include="Forms\HotkeyForm.Designer.cs">
       <DependentUpon>HotkeyForm.cs</DependentUpon>
     </Compile>
-    <Compile Include="Forms\RenameProfileForm.cs">
-      <SubType>Form</SubType>
-    </Compile>
-    <Compile Include="Forms\RenameProfileForm.Designer.cs">
-      <DependentUpon>RenameProfileForm.cs</DependentUpon>
-    </Compile>
     <Compile Include="Forms\UpdaterForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -244,6 +240,11 @@
     </Compile>
     <Compile Include="Icons.cs" />
     <Compile Include="JunUtils.cs" />
+    <Compile Include="Mania\DanRateFinder.cs" />
+    <Compile Include="Mania\DanTable.cs" />
+    <Compile Include="Mania\ManiaRating.cs" />
+    <Compile Include="Mania\ManiaTransforms.cs" />
+    <Compile Include="Mania\Xdc1.cs" />
     <Compile Include="Forms\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -269,6 +270,7 @@
       <DependentUpon>Settings.settings</DependentUpon>
     </Compile>
     <Compile Include="Settings.cs" />
+    <Compile Include="SettingsImport.cs" />
     <Compile Include="Forms\SongsFolderForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -276,7 +278,6 @@
       <DependentUpon>SongsFolderForm.cs</DependentUpon>
     </Compile>
     <Compile Include="SongSpeedChanger.cs" />
-    <Compile Include="UserProfile.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
@@ -292,7 +293,12 @@
     <Content Include="binaries\oppai.exe">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
-    <Content Include="updater.exe">
+    <Content Include="native\xdc1.dll">
+      <Link>xdc1.dll</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="native\XDC1-LICENSE.txt">
+      <Link>XDC1-LICENSE.txt</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="version.txt">
@@ -330,12 +336,19 @@
       <DependentUpon>MainForm.cs</DependentUpon>
       <SubType>Designer</SubType>
     </EmbeddedResource>
-    <EmbeddedResource Include="Forms\RenameProfileForm.resx">
-      <DependentUpon>RenameProfileForm.cs</DependentUpon>
-    </EmbeddedResource>
     <EmbeddedResource Include="Forms\UpdaterForm.resx">
       <DependentUpon>UpdaterForm.cs</DependentUpon>
     </EmbeddedResource>
+    <EmbeddedResource Include="resources\dans\alpha.png" />
+    <EmbeddedResource Include="resources\dans\beta.png" />
+    <EmbeddedResource Include="resources\dans\gamma.png" />
+    <EmbeddedResource Include="resources\dans\delta.png" />
+    <EmbeddedResource Include="resources\dans\epsilon.png" />
+    <EmbeddedResource Include="resources\dans\zeta.png" />
+    <EmbeddedResource Include="resources\dans\eta.png" />
+    <EmbeddedResource Include="resources\dans\theta.png" />
+    <EmbeddedResource Include="resources\dans\iota.png" />
+    <EmbeddedResource Include="resources\dans\kappa.png" />
     <EmbeddedResource Include="Properties\Resources.resx">
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>

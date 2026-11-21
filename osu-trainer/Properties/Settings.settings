@@ -8,6 +8,15 @@
     <Setting Name="NoSpinners" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>
+    <Setting Name="FullLN" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="NoLN" Type="System.Boolean" Scope="User">
+      <Value Profile="(Default)">False</Value>
+    </Setting>
+    <Setting Name="DanButtons" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Alpha,Beta,Gamma,Delta</Value>
+    </Setting>
     <Setting Name="ChangePitch" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>

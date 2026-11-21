@@ -32,6 +32,7 @@ namespace osu_trainer.Controls
                 do { number += (e.Delta > 0) ? 1 : (e.Delta < 0) ? -1 : 1; } while (number % ScrollValue != 0);
             }
             Text = number.ToString();
+            Modified = true; // a scroll is an edit: the Leave handler applies only edited text
             OnLeave(EventArgs.Empty);
         }
     }

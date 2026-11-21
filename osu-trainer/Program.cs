@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 using System.Drawing.Text;
 using System.Globalization;
 using System.Runtime.InteropServices;
@@ -14,17 +13,11 @@ namespace osu_trainer
         [STAThread]
         public static void Main()
         {
-            try
-            {
-                var updaterProc = Process.Start("updater.exe");
-                updaterProc.WaitForExit();
-            }
-            catch (Exception e)
-            {
-                // failed to update, who cares
-                Console.WriteLine("Failed to update lol");
-                Console.WriteLine(e);
-            }
+            // mania-trainer doesn't run upstream's updater.exe: an update would replace it with the regular
+            // osu-trainer release.
+
+            // settings saved by this program under its old name (the osu-trainer 1.8.0 mania build), on first run
+            SettingsImport.ImportOnFirstRun();
 
             AddFont(FontCollection, Properties.Resources.Comfortaa_Bold);
 

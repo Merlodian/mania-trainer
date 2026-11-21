@@ -5,11 +5,11 @@ using System.Runtime.InteropServices;
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle("osu trainer")]
-[assembly: AssemblyDescription("")]
+[assembly: AssemblyTitle("mania trainer")]
+[assembly: AssemblyDescription("osu!mania dan ratings and rate changer, based on FunOrange's osu-trainer 1.8.0")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("")]
-[assembly: AssemblyProduct("osu trainer")]
+[assembly: AssemblyCompany("mania trainer")]
+[assembly: AssemblyProduct("mania trainer")]
 [assembly: AssemblyCopyright("")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]

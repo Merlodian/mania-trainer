@@ -64,16 +64,26 @@ namespace osu_trainer.Forms
             [Keys.OemPeriod] = ".",
             [Keys.OemQuestion] = "/"
         };
+
+        /// <summary>A hotkey as it reads on the keyboard ("1", "]"), the way this dialog shows it; Keys' own name otherwise.</summary>
+        internal static string KeyName(Keys key) => AcceptedKeysToString.TryGetValue(key, out var name) ? name : key.ToString();
         private int desiredStartLocationX;
         private int desiredStartLocationY;
         private bool WaitingForKeypress = false;
-        private int WhichHotkey = 0; // 0: Generate Map, // 1-4: Execute Profile 1-4
+        private int WhichHotkey = 0; // 0: Generate Map, // 1-4: dan buttons 1-4
         private List<Button> buttons;
         public List<Keys> Hotkeys;
-        public HotkeyForm(int x, int y, List<Keys> hotkeys)
+        /// <param name="danButtonNames">The dans of the four dan buttons, to name their hotkeys.</param>
+        public HotkeyForm(int x, int y, List<Keys> hotkeys, IList<string> danButtonNames = null)
         {
             InitializeComponent();
             buttons = new List<Button>() { button5, button1, button2, button3, button4};
+            if (danButtonNames != null && danButtonNames.Count == 4)
+            {
+                var labels = new[] { SpeedLabel, label1, label2, label3 };
+                for (int i = 0; i < labels.Length; i++)
+                    labels[i].Text = $"{danButtonNames[i]} Button";
+            }
 
             desiredStartLocationX = x;
             desiredStartLocationY = y;

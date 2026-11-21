@@ -1,8 +1,11 @@
 using FsBeatmapProcessor;
+using osu_trainer.Mania;
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Globalization;
 using System.Timers;
 using System.Windows.Forms;
 using Timer = System.Timers.Timer;
@@ -15,6 +18,8 @@ namespace osu_trainer.Controls
         private Font _artistFont;
         private Font _titleFont;
         private Font _starsFont;
+        private Font _danNameFont;
+        private Font _danNumberFont;
 
         public string Artist { get; set; }
 
@@ -57,6 +62,30 @@ namespace osu_trainer.Controls
         private GameMode _lastMode = GameMode.CatchtheBeat;
         #endregion
 
+        #region Dan display (osu!mania)
+        private ManiaRating _maniaRating;
+        private float _maniaValue;       // animated towards _targetManiaValue
+        private float _targetManiaValue;
+        private readonly Dictionary<Color, Image> _tintedManiaIcons = new Dictionary<Color, Image>();
+
+        /// <summary>
+        /// Dan rating of the edited osu!mania map. When set on a mania map it replaces the star rating badge.
+        /// </summary>
+        public ManiaRating ManiaRating
+        {
+            get => _maniaRating;
+            set
+            {
+                _maniaRating = value;
+                _targetManiaValue = value != null && value.Status == ManiaRatingStatus.Ok ? (float)value.Rating : 0f;
+                if (_maniaValue <= 0)
+                    _maniaValue = _targetManiaValue * 0.9f; // first rating: count up quickly from just below
+                _timer.Start();
+                Invalidate(false);
+            }
+        }
+        #endregion
+
         private Image _cover;
 
         public SongDisplay()
@@ -66,9 +95,12 @@ namespace osu_trainer.Controls
 
             glow = Properties.Resources.glow;
 
+            // Ticks run on the UI thread (SynchronizingObject), like the setters that restart the timer, so a tick
+            // can't stop the timer just as a new value arrives.
             _timer = new Timer()
             {
                 Interval = 33,
+                SynchronizingObject = this,
             };
             _timer.Elapsed += TimerOnElapsed;
 
@@ -121,6 +153,10 @@ namespace osu_trainer.Controls
 
             var bottom = height - 5;
 
+            // the dan badge is wider than the star badge, so keep the artist line clear of it
+            bool showDan = GameMode == GameMode.Mania && ManiaRating != null;
+            float badgeWidth = showDan ? MeasureDanBadge(e.Graphics).Width : 0;
+
             // map info
             var shadowColor = Color.FromArgb(128, 0, 0, 0);
             using (var shadowBrush = new SolidBrush(shadowColor))
@@ -128,8 +164,19 @@ namespace osu_trainer.Controls
                 // artist
                 var artistHeight = (int)e.Graphics.MeasureString(Artist, _artistFont).Height;
                 var artistY = bottom - artistHeight;
-                e.Graphics.DrawString(Artist, _artistFont, shadowBrush, 5, artistY + 1);
-                e.Graphics.DrawString(Artist, _artistFont, Brushes.White, 5, artistY);
+                if (showDan)
+                {
+                    var artistFormat = new StringFormat(StringFormatFlags.NoWrap) { Trimming = StringTrimming.EllipsisCharacter };
+                    var artistRectangle = new RectangleF(5, artistY + 1, Math.Max(0, Width - 5 - badgeWidth - 10), artistHeight);
+                    e.Graphics.DrawString(Artist, _artistFont, shadowBrush, artistRectangle, artistFormat);
+                    artistRectangle.Y--;
+                    e.Graphics.DrawString(Artist, _artistFont, Brushes.White, artistRectangle, artistFormat);
+                }
+                else
+                {
+                    e.Graphics.DrawString(Artist, _artistFont, shadowBrush, 5, artistY + 1);
+                    e.Graphics.DrawString(Artist, _artistFont, Brushes.White, 5, artistY);
+                }
 
                 // title
                 var titleFormat = new StringFormat()
@@ -145,7 +192,10 @@ namespace osu_trainer.Controls
                 e.Graphics.DrawString(Title, _titleFont, Brushes.White, titleRectangle, titleFormat);
 
                 DrawDifficultyBadge(e.Graphics, shadowBrush);
-                DrawStarRatingBadge(e.Graphics);
+                if (showDan)
+                    DrawDanBadge(e.Graphics);
+                else
+                    DrawStarRatingBadge(e.Graphics);
             }
         }
 
@@ -209,7 +259,142 @@ namespace osu_trainer.Controls
             _artistFont = new Font(Font.FontFamily, 14, FontStyle.Bold, GraphicsUnit.Pixel);
             _titleFont = new Font(Font.FontFamily, 20.8f, FontStyle.Bold, GraphicsUnit.Pixel);
             _starsFont = new Font(Font.FontFamily, 17f, FontStyle.Bold, GraphicsUnit.Pixel);
+            _danNameFont = new Font(Font.FontFamily, 15f, FontStyle.Bold, GraphicsUnit.Pixel);
+            _danNumberFont = new Font(Font.FontFamily, 13f, FontStyle.Bold, GraphicsUnit.Pixel);
         }
+
+        #region Dan display (osu!mania)
+        private const float DanBadgeHeight = 24;
+        private const float DanIconSize = 20;
+        private const float DanPadLeft = 5, DanPadRight = 9, DanIconGap = 5, DanNumberGap = 6;
+
+        // What the badge shows for the current rating.
+        private struct DanBadgeContent
+        {
+            public Image Icon;
+            public string Name;
+            public Color NameColor;
+            public string Number;    // null for no number
+            public float Progress;   // < 0 for no progress line
+            public Color ProgressColor;
+        }
+
+        private DanBadgeContent GetDanBadgeContent()
+        {
+            var rating = ManiaRating;
+            var muted = Colors.Disabled;
+            switch (rating?.Status)
+            {
+                case ManiaRatingStatus.Ok:
+                    var dan = rating.Dan;
+                    if (dan == null)
+                    {
+                        return new DanBadgeContent
+                        {
+                            Icon = TintedManiaIcon(muted),
+                            Name = "Below 1st",
+                            NameColor = muted,
+                            Number = ManiaNumber(rating),
+                            Progress = rating.Progress,
+                            ProgressColor = DanTable.Levels[0].TextColor,
+                        };
+                    }
+                    var color = Enabled ? dan.TextColor : muted;
+                    return new DanBadgeContent
+                    {
+                        Icon = DanTable.GetIcon(dan) ?? TintedManiaIcon(color),
+                        Name = dan.DisplayName,
+                        NameColor = color,
+                        Number = ManiaNumber(rating),
+                        Progress = rating.NextDan == null ? -1 : rating.Progress,
+                        ProgressColor = (rating.NextDan ?? dan).TextColor,
+                    };
+                case ManiaRatingStatus.NotFourKey:
+                    return new DanBadgeContent { Icon = TintedManiaIcon(muted), Name = $"{rating.Keys}K", NameColor = Colors.TextBoxFg, Number = "4K only", Progress = -1 };
+                default:
+                    return new DanBadgeContent { Icon = TintedManiaIcon(muted), Name = "No rating", NameColor = muted, Progress = -1 };
+            }
+        }
+
+        // While counting, the animated value; once settled, the rating rounded exactly as DanTable.Classify rounds
+        // it (the float can be a hair off), so the number always agrees with the dan and the tooltip.
+        private string ManiaNumber(ManiaRating rating) =>
+            _maniaValue == _targetManiaValue
+                ? DanTable.FormatRating(rating.Rating)
+                : _maniaValue.ToString("0.00", CultureInfo.InvariantCulture);
+
+        private SizeF MeasureDanBadge(Graphics graphics) => MeasureDanBadge(graphics, GetDanBadgeContent(), out _, out _);
+
+        private SizeF MeasureDanBadge(Graphics graphics, DanBadgeContent content, out SizeF nameSize, out SizeF numberSize)
+        {
+            nameSize = graphics.MeasureString(content.Name, _danNameFont);
+            numberSize = content.Number == null ? SizeF.Empty : graphics.MeasureString(content.Number, _danNumberFont);
+            float width = DanPadLeft + DanIconSize + DanIconGap + nameSize.Width + DanPadRight;
+            if (content.Number != null)
+                width += DanNumberGap + numberSize.Width;
+            return new SizeF(width, DanBadgeHeight);
+        }
+
+        // Bottom-right badge in the style of the star rating badge: [dan icon] Dan name  rating
+        // with a thin line along the bottom showing progress towards the next dan.
+        private void DrawDanBadge(Graphics graphics)
+        {
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+
+            var content = GetDanBadgeContent();
+            var size = MeasureDanBadge(graphics, content, out var nameSize, out var numberSize);
+            var badge = new RectangleF(Width - 3 - size.Width, Height - 3 - DanBadgeHeight, size.Width, DanBadgeHeight);
+
+            using (var path = JunUtils.RoundedRect(badge, 11))
+            {
+                using (var shadowBrush = new SolidBrush(Color.FromArgb(240, 0, 0, 0)))
+                    graphics.FillPath(shadowBrush, path);
+
+                if (content.Progress >= 0)
+                {
+                    var clip = graphics.Clip;
+                    graphics.SetClip(path, CombineMode.Intersect);
+                    var track = new RectangleF(badge.X, badge.Bottom - 2, badge.Width, 2);
+                    using (var trackBrush = new SolidBrush(Color.FromArgb(50, 255, 255, 255)))
+                        graphics.FillRectangle(trackBrush, track);
+                    track.Width = badge.Width * content.Progress;
+                    using (var progressBrush = new SolidBrush(Color.FromArgb(220, content.ProgressColor)))
+                        graphics.FillRectangle(progressBrush, track);
+                    graphics.Clip = clip;
+                }
+            }
+
+            float x = badge.X + DanPadLeft;
+            if (content.Icon != null)
+                graphics.DrawImage(content.Icon, x, badge.Y + (DanBadgeHeight - DanIconSize) / 2, DanIconSize, DanIconSize);
+            x += DanIconSize + DanIconGap;
+
+            var format = new StringFormat(StringFormatFlags.NoWrap) { LineAlignment = StringAlignment.Center };
+            using (var nameBrush = new SolidBrush(content.NameColor))
+                graphics.DrawString(content.Name, _danNameFont, nameBrush, new RectangleF(x, badge.Y + 1, nameSize.Width + 2, DanBadgeHeight), format);
+            x += nameSize.Width + DanNumberGap;
+
+            if (content.Number != null)
+            {
+                using (var numberBrush = new SolidBrush(Color.FromArgb(200, Colors.TextBoxFg)))
+                    graphics.DrawString(content.Number, _danNumberFont, numberBrush, new RectangleF(x, badge.Y + 1, numberSize.Width + 2, DanBadgeHeight), format);
+            }
+        }
+
+        private Image TintedManiaIcon(Color color)
+        {
+            if (!_tintedManiaIcons.TryGetValue(color, out var icon))
+            {
+                icon = Icons.GenerateIcon(GameMode.Mania, color);
+                _tintedManiaIcons[color] = icon;
+            }
+            return icon;
+        }
+        #endregion
 
         #region Star rating display
         private void DrawStarRatingBadge(Graphics graphics)
@@ -265,17 +450,30 @@ namespace osu_trainer.Controls
         }
         private void TimerOnElapsed(object sender, ElapsedEventArgs e)
         {
-            if (_stars == _targetStars)
+            bool starsChanged = _stars != _targetStars;
+            bool danChanged = _maniaValue != _targetManiaValue;
+            if (!starsChanged && !danChanged)
+            {
+                _timer.Stop();
                 return;
+            }
 
-            if (_targetStars > _stars)
-                _stars += (_targetStars - _stars) * AnimationSpeed;
-            else if (_targetStars < _stars)
-                _stars -= (_stars - _targetStars) * AnimationSpeed;
-
-            updateIcon(gameMode, Enabled ? Colors.GetDifficultyColor(_stars) : Colors.Disabled);
+            if (starsChanged)
+            {
+                _stars = Approach(_stars, _targetStars, 0.005f);
+                updateIcon(gameMode, Enabled ? Colors.GetDifficultyColor(_stars) : Colors.Disabled);
+            }
+            if (danChanged)
+                _maniaValue = Approach(_maniaValue, _targetManiaValue, 0.005f);
 
             Invalidate(false);
+        }
+
+        // eases towards the target and snaps once close (a float can otherwise stay one step away forever)
+        private static float Approach(float value, float target, float snap)
+        {
+            value += (target - value) * AnimationSpeed;
+            return Math.Abs(target - value) < snap ? target : value;
         }
         private void updateIcon(GameMode mode, Color color)
         {

@@ -50,6 +50,42 @@ namespace osu_trainer.Properties {
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool FullLN {
+            get {
+                return ((bool)(this["FullLN"]));
+            }
+            set {
+                this["FullLN"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
+        public bool NoLN {
+            get {
+                return ((bool)(this["NoLN"]));
+            }
+            set {
+                this["NoLN"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Alpha,Beta,Gamma,Delta")]
+        public string DanButtons {
+            get {
+                return ((string)(this["DanButtons"]));
+            }
+            set {
+                this["DanButtons"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool ChangePitch {
             get {
                 return ((bool)(this["ChangePitch"]));

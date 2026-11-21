@@ -1,6 +1,7 @@
 ﻿using FsBeatmapProcessor;
 using osu_trainer.Controls;
 using osu_trainer.Forms;
+using osu_trainer.Mania;
 using OsuMemoryDataProvider;
 using OsuMemoryDataProvider.OsuMemoryModels.Direct;
 using ProcessMemoryDataFinder.API;
@@ -11,9 +12,11 @@ using System.Data;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Text;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Media;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -49,11 +52,19 @@ namespace osu_trainer
         private bool? gameLoaded = null;
         private bool mapSelectScreen = false;
 
+        // Form heights without the extras panel. Upstream used 493 / 531; the CS and AR rows (56 px) are gone, and
+        // the dan buttons have one row of small buttons under them where the profile buttons had two (17 px).
+        private const int NotReadyHeight = 437;
+        private const int ReadyHeight = 458;
+
+        private readonly ToolTip danToolTip;
+
         public MainForm()
         {
             Directory.SetCurrentDirectory(Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location));
             InitializeComponent();
-            Height = 493;
+            Height = NotReadyHeight;
+            danToolTip = new ToolTip(components) { AutoPopDelay = 20000, InitialDelay = 400, ReshowDelay = 200 };
 
             // Read version number from version.txt
             try
@@ -65,7 +76,7 @@ namespace osu_trainer
                     string value = line.Split(':')[1].Trim();
                     if (attribute == "current version")
                     {
-                        this.Text = $"osu trainer {value}"; // set window title
+                        this.Text = $"mania trainer {value}"; // set window title
                     }
                 }
             }
@@ -74,21 +85,28 @@ namespace osu_trainer
             // init control lists
             dumbLabels = new List<Label>
             {
-                hplabel, cslabel, arlabel, odlabel,
+                hplabel, odlabel,
                 BpmMultiplierLabel, OriginalBpmLabel, NewBpmLabel
             };
             diffDisplays = new List<TextBox>
             {
-                HPDisplay, CSDisplay, ARDisplay, ODDisplay
+                HPDisplay, ODDisplay
             };
             diffSliders = new List<OptionSlider>
             {
-                HPSlider, CSSlider, ARSlider, ODSlider
+                HPSlider, ODSlider
             };
             checkControls = new List<OsuCheckBox>
             {
-                NoSpinnersCheck, HRCheck, ScaleARCheck, ScaleODCheck, ChangePitchCheck, highQualityMp3Check
+                NoSpinnersCheck, FullLNCheck, NoLNCheck, ChangePitchCheck, highQualityMp3Check
             };
+
+            // dan buttons
+            danButtons = new[] { danButton1, danButton2, danButton3, danButton4 };
+            danMenuButtons = new[] { danMenuButton1, danMenuButton2, danMenuButton3, danMenuButton4 };
+            danTargets = ParseDanButtons(Properties.Settings.Default.DanButtons);
+            danMenu = BuildDanMenu();
+            danButtonToolTip = new ToolTip(components) { AutoPopDelay = 10000, InitialDelay = 500, ReshowDelay = 200 };
 
             ApplyFonts();
 
@@ -96,7 +114,7 @@ namespace osu_trainer
             if (Directory.Exists(Properties.Settings.Default.SongsFolder))
                 userSongsFolder = Properties.Settings.Default.SongsFolder;
 
-            // load hotkeys
+            // load hotkeys: Create Map, then the four dan buttons (saved under upstream's profile hotkey settings)
             Hotkeys = new List<Keys>();
             Hotkeys.Add(Properties.Settings.Default.HotkeyCreateMap);
             Hotkeys.Add(Properties.Settings.Default.HotkeyProfile1);
@@ -111,23 +129,25 @@ namespace osu_trainer
             // Add event handlers (observers)
             editor.StateChanged += ToggleDumbLabels;
             editor.StateChanged += TogglePrettyButtons;
-            editor.StateChanged += ToggleHpCsArOdDisplay;
+            editor.StateChanged += ToggleHpOdDisplay;
             editor.StateChanged += ToggleBpmInputControls;
             editor.StateChanged += ToggleBpmDisplay;
             editor.StateChanged += ToggleLockButtons;
-            editor.StateChanged += UpdateProfiles;
+            editor.StateChanged += UpdateDanButtons;
             middlePanel.MaximumSize = new Size(999, 999);
             BottomPanel.MaximumSize = new Size(999, 999);
             editor.StateChanged += RearrangeLayout;
             editor.BeatmapSwitched += UpdateSongDisplay;
+            editor.BeatmapSwitched += UpdateDifficultyDisplay;
             editor.BeatmapModified += UpdateBpmDisplay;
-            editor.BeatmapModified += UpdateHpCsArOdDisplay;
+            editor.BeatmapModified += UpdateHpOdDisplay;
             editor.BeatmapModified += UpdateDifficultyDisplay;
             editor.BeatmapModified += TogglePrettyButtons;
             editor.BeatmapModified += UpdateRateInputControls;
             editor.ControlsModified += UpdateLockButtons;
             editor.ControlsModified += UpdateCheckBoxes;
-            editor.ControlsModified += UpdateProfiles;
+            editor.BeatmapSwitched += UpdateDanButtons;
+            editor.BeatmapSwitched += (s, e) => ClearDanStatuses(); // what the dan buttons found was for the old map
 
             // Install keyboard hooks
             // Notice: The only purpose of the keyboard hook is for shortcuts. Nothing else!
@@ -153,8 +173,9 @@ namespace osu_trainer
             kbhook = new globalKeyboardHook();
             kbhook.HookedKeys = Hotkeys;
             kbhook.KeyDown += new KeyEventHandler(CreateMapHotkeyHandler);
-            kbhook.KeyDown += new KeyEventHandler(ProfileHotkeyHandler);
-            GenerateMapButton.Subtext = $"Ctrl+Shift+{Hotkeys[0]}";
+            kbhook.KeyDown += new KeyEventHandler(DanHotkeyHandler);
+            kbhook.KeyUp += new KeyEventHandler(DanHotkeyReleased);
+            GenerateMapButton.Subtext = $"Ctrl+Shift+{HotkeyForm.KeyName(Hotkeys[0])}";
         }
 
         private void ApplyFonts()
@@ -167,7 +188,6 @@ namespace osu_trainer
                 label.Font = new Font(comforta, 10, FontStyle.Bold);
             foreach (var check in checkControls)
                 check.Font = new Font(comforta, 9, FontStyle.Bold);
-            updatesCheck.Font = new Font(comforta, 9, FontStyle.Bold);
 
             BpmMultiplierTextBox.Font = new Font(comforta, 11, FontStyle.Bold);
             OriginalBpmTextBox.Font = new Font(comforta, 10, FontStyle.Bold);
@@ -322,42 +342,34 @@ namespace osu_trainer
             foreach (var check in checkControls)
                 check.Enabled = not_ready ? false : true;
             highQualityMp3Check.ForeColor = not_ready ? highQualityMp3Check.DisabledColor : Color.FromArgb(167, 154, 233);
+            UpdateLnCheckBoxesEnabled();
         }
+
+        // Full LN / No LN only mean something for osu!mania maps
+        private void UpdateLnCheckBoxesEnabled()
+        {
+            bool enabled = editor.State != EditorState.NOT_READY && editor.GetMode() == GameMode.Mania;
+            foreach (var check in new[] { FullLNCheck, NoLNCheck })
+            {
+                check.Enabled = enabled;
+                check.ForeColor = enabled ? Colors.PaleBlue : Colors.Disabled;
+            }
+        }
+
         private void UpdateLockButtons(object sender, EventArgs e)
         {
             // change checked state without raising any events
             HPLockCheck.CheckedChanged -= HpLockCheck_CheckedChanged;
-            CSLockCheck.CheckedChanged -= CsLockCheck_CheckedChanged;
-            ARLockCheck.CheckedChanged -= ArLockCheck_CheckedChanged;
             ODLockCheck.CheckedChanged -= OdLockCheck_CheckedChanged;
             BpmLockCheck.CheckedChanged -= BpmLockCheck_CheckedChanged;
 
             HPLockCheck.Checked = editor.HpIsLocked;
-            CSLockCheck.Checked = editor.CsIsLocked;
-            ARLockCheck.Checked = editor.ArIsLocked;
             ODLockCheck.Checked = editor.OdIsLocked;
             BpmLockCheck.Checked = editor.BpmIsLocked;
 
             HPLockCheck.CheckedChanged += HpLockCheck_CheckedChanged;
-            CSLockCheck.CheckedChanged += CsLockCheck_CheckedChanged;
-            ARLockCheck.CheckedChanged += ArLockCheck_CheckedChanged;
             ODLockCheck.CheckedChanged += OdLockCheck_CheckedChanged;
             BpmLockCheck.CheckedChanged += BpmLockCheck_CheckedChanged;
-        }
-        private bool isCheckForUpdatesEnabled()
-        {
-            try
-            {
-                foreach (string line in File.ReadAllLines("version.txt"))
-                {
-                    string key = line.Split(':')[0].Trim().ToLower();
-                    string value = line.Split(':')[1].Trim().ToLower();
-                    if (key == "check for updates" && new string[]{"no", "false"}.Contains(value))
-                        return false;
-                }
-            }
-            catch { return true; }
-            return true;
         }
 
         private void UpdateCheckBoxes(object sender, EventArgs e)
@@ -368,34 +380,29 @@ namespace osu_trainer
                 check.Enabled = enabled;
                 check.ForeColor = enabled ? Colors.PaleBlue : Colors.Disabled;
             }
+            UpdateLnCheckBoxesEnabled();
 
             // change checked state without raising any events
             NoSpinnersCheck.CheckedChanged         -= NoSpinnerCheckBox_CheckedChanged;
-            HRCheck.CheckedChanged                 -= HRCheck_CheckedChanged;
+            FullLNCheck.CheckedChanged             -= FullLNCheck_CheckedChanged;
+            NoLNCheck.CheckedChanged               -= NoLNCheck_CheckedChanged;
             ChangePitchCheck.CheckedChanged        -= ChangePitchButton_CheckedChanged;
-            ScaleODCheck.CheckedChanged            -= ScaleODCheck_CheckedChanged;
-            ScaleARCheck.CheckedChanged            -= ScaleARCheck_CheckedChanged;
             highQualityMp3Check.CheckedChanged     -= highQualityCheckBox_CheckedChanged;
-            updatesCheck.CheckedChanged            -= updatesCheck_CheckedChanged;
 
             NoSpinnersCheck.Checked            = editor.NoSpinners;
-            HRCheck.Checked                    = editor.ForceHardrockCirclesize;
+            FullLNCheck.Checked                = editor.FullLN;
+            NoLNCheck.Checked                  = editor.NoLN;
             ChangePitchCheck.Checked           = editor.ChangePitch;
-            ScaleODCheck.Checked               = editor.ScaleOD;
-            ScaleARCheck.Checked               = editor.ScaleAR;
             highQualityMp3Check.Checked        = editor.HighQualityMp3s;
-            updatesCheck.Checked               = isCheckForUpdatesEnabled();
 
             NoSpinnersCheck.CheckedChanged         += NoSpinnerCheckBox_CheckedChanged;
-            HRCheck.CheckedChanged                 += HRCheck_CheckedChanged;
+            FullLNCheck.CheckedChanged             += FullLNCheck_CheckedChanged;
+            NoLNCheck.CheckedChanged               += NoLNCheck_CheckedChanged;
             ChangePitchCheck.CheckedChanged        += ChangePitchButton_CheckedChanged;
-            ScaleODCheck.CheckedChanged            += ScaleODCheck_CheckedChanged;
-            ScaleARCheck.CheckedChanged            += ScaleARCheck_CheckedChanged;
             highQualityMp3Check.CheckedChanged     += highQualityCheckBox_CheckedChanged;
-            updatesCheck.CheckedChanged            += updatesCheck_CheckedChanged;
         }
 
-        private void ToggleHpCsArOdDisplay(object sender, EventArgs e)
+        private void ToggleHpOdDisplay(object sender, EventArgs e)
         {
             bool enabled = (editor.State != EditorState.NOT_READY);
             HPSlider.Enabled = enabled;
@@ -403,20 +410,6 @@ namespace osu_trainer
             HPDisplay.BackColor = enabled ? Colors.ReadOnlyBg : SystemColors.ControlDark;
             HPDisplay.ForeColor = Colors.ReadOnlyFg;
             HPDisplay.Font = new Font(HPDisplay.Font, FontStyle.Bold);
-
-            enabled = (editor.State != EditorState.NOT_READY) && (editor.GetMode() == GameMode.osu || editor.GetMode() == GameMode.CatchtheBeat);
-            CSSlider.Enabled = enabled;
-            CSDisplay.Enabled = enabled ? true : false;
-            CSDisplay.BackColor = enabled ? Colors.ReadOnlyBg : SystemColors.ControlDark;
-            CSDisplay.ForeColor = Colors.ReadOnlyFg;
-            CSDisplay.Font = new Font(CSDisplay.Font, FontStyle.Bold);
-
-            enabled = (editor.State != EditorState.NOT_READY) && (editor.GetMode() == GameMode.osu || editor.GetMode() == GameMode.CatchtheBeat);
-            ARSlider.Enabled = enabled;
-            ARDisplay.Enabled = enabled ? true : false;
-            ARDisplay.BackColor = enabled ? Colors.ReadOnlyBg : SystemColors.ControlDark;
-            ARDisplay.ForeColor = Colors.ReadOnlyFg;
-            ARDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
 
             enabled = (editor.State != EditorState.NOT_READY);
             ODSlider.Enabled = enabled;
@@ -426,7 +419,7 @@ namespace osu_trainer
             ODDisplay.Font = new Font(ODDisplay.Font, FontStyle.Bold);
         }
 
-        private void UpdateHpCsArOdDisplay(object sender, EventArgs e)
+        private void UpdateHpOdDisplay(object sender, EventArgs e)
         {
             // HP
             decimal newHP = editor.NewBeatmap.HPDrainRate;
@@ -449,63 +442,17 @@ namespace osu_trainer
                 HPDisplay.Font = new Font(HPDisplay.Font, FontStyle.Bold);
             }
 
-            // CS
-            decimal newCS = editor.NewBeatmap.CircleSize;
-            decimal originalCS = editor.OriginalBeatmap.CircleSize;
-            CSDisplay.Text = newCS.ToString("0.#");
-            CSSlider.Value = (decimal)newCS;
-            if (newCS > originalCS)
-            {
-                CSDisplay.ForeColor = Colors.AccentRed;
-                CSDisplay.Font = new Font(CSDisplay.Font, FontStyle.Bold);
-            }
-            else if (newCS < originalCS)
-            {
-                CSDisplay.ForeColor = Colors.Easier;
-                CSDisplay.Font = new Font(CSDisplay.Font, FontStyle.Bold);
-            }
-            else
-            {
-                CSDisplay.ForeColor = Colors.TextBoxFg;
-                CSDisplay.Font = new Font(CSDisplay.Font, FontStyle.Bold);
-            }
-
-            // AR
-            decimal newAR = editor.NewBeatmap.ApproachRate;
-            ARDisplay.Text = newAR.ToString("0.#");
-            ARSlider.Value = (decimal)newAR;
-            if (newAR > editor.GetScaledAR())
-            {
-                ARDisplay.ForeColor = Colors.AccentRed;
-                ARDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
-            }
-            else if (newAR < editor.GetScaledAR())
-            {
-                ARDisplay.ForeColor = Colors.Easier;
-                ARDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
-            }
-            else
-            {
-                ARDisplay.ForeColor = Colors.TextBoxFg;
-                ARDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
-            }
-            if (newAR > 10)
-            {
-                ARDisplay.ForeColor = Color.Magenta;
-                ARDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
-            }
-
             // OD
             decimal newOD = editor.NewBeatmap.OverallDifficulty;
             decimal originalOD = editor.OriginalBeatmap.OverallDifficulty;
             ODDisplay.Text = newOD.ToString("0.#");
             ODSlider.Value = (decimal)newOD;
-            if (newOD > editor.GetScaledOD())
+            if (newOD > originalOD)
             {
                 ODDisplay.ForeColor = Colors.AccentRed;
                 ODDisplay.Font = new Font(ODDisplay.Font, FontStyle.Bold);
             }
-            else if (newOD < editor.GetScaledOD())
+            else if (newOD < originalOD)
             {
                 ODDisplay.ForeColor = Colors.Easier;
                 ODDisplay.Font = new Font(ODDisplay.Font, FontStyle.Bold);
@@ -518,7 +465,7 @@ namespace osu_trainer
             if (newOD > 10)
             {
                 ODDisplay.ForeColor = Color.Magenta;
-                ODDisplay.Font = new Font(ARDisplay.Font, FontStyle.Bold);
+                ODDisplay.Font = new Font(ODDisplay.Font, FontStyle.Bold);
             }
         }
 
@@ -532,13 +479,20 @@ namespace osu_trainer
 
         private void UpdateDifficultyDisplay(object sender, EventArgs e)
         {
-            SongDisplay.Stars = (float)editor.StarRating;
-
             var mode = editor.GetMode();
             if (mode.HasValue)
             {
                 SongDisplay.GameMode = mode.Value;
             }
+
+            // osu!mania maps show their dan; everything else keeps the star rating
+            var mania = editor.State == EditorState.NOT_READY ? null : editor.ManiaRating;
+            SongDisplay.ManiaRating = mania;
+            SongDisplay.Stars = (float)editor.StarRating;
+            string tip = mania?.Describe();
+            if (tip != null && mania.Status == ManiaRatingStatus.Ok && editor.LnConversion == LnConversion.FullLn)
+                tip += "\nFull LN isn't counted: rated as the original chart";
+            danToolTip.SetToolTip(SongDisplay, tip);
         }
 
         private void TogglePrettyButtons(object sender, EventArgs e)
@@ -574,40 +528,57 @@ namespace osu_trainer
 
         private void HpSlider_ValueChanged(object sender, EventArgs e) => editor.SetHP(HPSlider.Value);
 
-        private void CsSlider_ValueChanged(object sender, EventArgs e) => editor.SetCS(CSSlider.Value);
-
-        private void ArSlider_ValueChanged(object sender, EventArgs e) => editor.SetAR(ARSlider.Value);
-
         private void OdSlider_ValueChanged(object sender, EventArgs e) => editor.SetOD(ODSlider.Value);
 
         private void HpLockCheck_CheckedChanged(object sender, EventArgs e) => editor.ToggleHpLock();
-
-        private void CsLockCheck_CheckedChanged(object sender, EventArgs e) => editor.ToggleCsLock();
-
-        private void ArLockCheck_CheckedChanged(object sender, EventArgs e) => editor.ToggleArLock();
 
         private void OdLockCheck_CheckedChanged(object sender, EventArgs e) => editor.ToggleOdLock();
 
         private void BpmLockCheck_CheckedChanged(object sender, EventArgs e) => editor.ToggleBpmLock();
 
-        private void ScaleODCheck_CheckedChanged(object sender, EventArgs e) => editor.SetScaleOD(!editor.ScaleOD);
-        private void ScaleARCheck_CheckedChanged(object sender, EventArgs e) => editor.SetScaleAR(!editor.ScaleAR);
+        // What the dan buttons found was for the old long note setting, if the rating goes by another one now (Full
+        // LN on or off alone doesn't change the rating: see RatingLnConversion).
+        private void FullLNCheck_CheckedChanged(object sender, EventArgs e)
+        {
+            var rating = editor.RatingLnConversion;
+            editor.ToggleFullLN();
+            if (editor.RatingLnConversion != rating)
+                ClearDanStatuses();
+        }
+        private void NoLNCheck_CheckedChanged(object sender, EventArgs e)
+        {
+            var rating = editor.RatingLnConversion;
+            editor.ToggleNoLN();
+            if (editor.RatingLnConversion != rating)
+                ClearDanStatuses();
+        }
 
         private void ChangePitchButton_CheckedChanged(object sender, EventArgs e) => editor.ToggleChangePitchSetting();
         private void NoSpinnerCheckBox_CheckedChanged(object sender, EventArgs e) => editor.ToggleNoSpinners();
         private void highQualityCheckBox_CheckedChanged(object sender, EventArgs e) => editor.ToggleHighQualityMp3s();
 
+        // Leaving the rate box or the New BPM box, or Enter in it, applies only what was typed there. Each shows a
+        // rounded value: the rate to 0.01x, the BPM to a whole number. Applying an untyped box would move the rate.
+        // A dan button's 1.56x on a 180 BPM map is 280.8 BPM, shown as 281, and 300 BPM typed is 1.6667x, shown as
+        // 1.67. Modified is set by typing (the New BPM box's mouse wheel sets it too). The program setting different
+        // text clears it but the same text doesn't, so each submit clears it itself.
         private void BpmMultiplierTextBox_Submit(object sender, EventArgs e)
         {
+            if (!BpmMultiplierTextBox.Modified)
+                return;
+            BpmMultiplierTextBox.Modified = false;
             decimal mult;
-            if (Decimal.TryParse(BpmMultiplierTextBox.Text, out mult))
+            if (Decimal.TryParse(BpmMultiplierTextBox.Text, out mult) && mult >= BeatmapEditor.MinRate)
                 editor.SetBpmMultiplier(mult);
-            else
+            else // not a number, or under 0.10x: turned down, and the box shows the rate again
                 BpmMultiplierTextBox.Text = editor.BpmRate.ToString("0.00");
         }
 
         private void NewBpmTextBox_Submit()
         {
+            if (!NewBpmTextBox.Modified)
+                return;
+            NewBpmTextBox.Modified = false;
             int bpm;
             if (int.TryParse(NewBpmTextBox.Text, out bpm))
                 editor.SetBpm(bpm);
@@ -632,7 +603,11 @@ namespace osu_trainer
             }
         }
 
-        private void ResetButton_Click(object sender, EventArgs e) => editor.ResetBeatmap();
+        private void ResetButton_Click(object sender, EventArgs e)
+        {
+            editor.ResetBeatmap();
+            ClearDanStatuses(); // the rate and long note setting the dan buttons worked with are gone
+        }
 
         private void DeleteButton_Click(object sender, EventArgs e)
         {
@@ -657,7 +632,9 @@ namespace osu_trainer
 
         private void GenerateMapButton_Click(object sender, EventArgs e)
         {
-            if ( !Properties.Settings.Default.HighARODMessageShown && (editor.NewBeatmap.ApproachRate > 10M || editor.NewBeatmap.ApproachRate > 10M) )
+            var mode = editor.GetMode();
+            bool highAR = (mode == GameMode.osu || mode == GameMode.CatchtheBeat) && editor.NewBeatmap.ApproachRate > 10M;
+            if ( !Properties.Settings.Default.HighARODMessageShown && (highAR || editor.NewBeatmap.OverallDifficulty > 10M) )
             {
                 MessageBox.Show("You have chosen an AR or OD greater than 10. After this map gets created, make sure to play it with Doubletime.", "Note");
                 Properties.Settings.Default.HighARODMessageShown = true;
@@ -674,12 +651,18 @@ namespace osu_trainer
                 return;
 
             var k = (KeyEventArgs)e;
-            if (k.Control && k.Shift && k.KeyCode == Keys.X)
-            {
-                sound.Stream = Properties.Resources.hotkey;
-                sound.Play();
-                GenerateMapButton_Click(sender, EventArgs.Empty);
-            }
+            // The key set in the hotkey window (upstream always checked X), with Ctrl+Shift and not Alt: AltGr is
+            // Ctrl+Alt, and AltGr+Shift+key types a character on some keyboard layouts.
+            if (k.Control && k.Shift && !k.Alt && k.KeyCode == Hotkeys[0])
+                CreateMapFromHotkey();
+        }
+
+        // the hotkey sound, then Create Map
+        protected virtual void CreateMapFromHotkey()
+        {
+            sound.Stream = Properties.Resources.hotkey;
+            sound.Play();
+            GenerateMapButton_Click(this, EventArgs.Empty);
         }
 
 #endregion User input event handlers
@@ -843,11 +826,6 @@ namespace osu_trainer
             editor.SetBpmMultiplier(BpmSlider.Value);
         }
 
-        private void HRCheck_CheckedChanged(object sender, EventArgs e)
-        {
-            editor.ToggleHrEmulation();
-        }
-
         private void SongsFolderButton_Click(object sender, EventArgs e)
         {
             var songsFolderForm = new SongsFolderForm(userSongsFolder);
@@ -867,7 +845,7 @@ namespace osu_trainer
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             editor.SaveSettings();
-            editor.SaveProfilesToDisk();
+            Properties.Settings.Default.DanButtons = FormatDanButtons(danTargets);
             // save hotkeys
             Properties.Settings.Default.HotkeyCreateMap = Hotkeys[0];
             Properties.Settings.Default.HotkeyProfile1 = Hotkeys[1];
@@ -877,126 +855,363 @@ namespace osu_trainer
             Properties.Settings.Default.Save();
         }
 
-#region User Profile Buttons
-        private void profileButton1_Click(object sender, EventArgs e) => editor.LoadProfile(0);
-        private void profileButton2_Click(object sender, EventArgs e) => editor.LoadProfile(1);
-        private void profileButton3_Click(object sender, EventArgs e) => editor.LoadProfile(2);
-        private void profileButton4_Click(object sender, EventArgs e) => editor.LoadProfile(3);
-        private void saveButton1_Click(object sender, EventArgs e) => saveButtonClick(0);
-        private void saveButton2_Click(object sender, EventArgs e) => saveButtonClick(1);
-        private void saveButton3_Click(object sender, EventArgs e) => saveButtonClick(2);
-        private void saveButton4_Click(object sender, EventArgs e) => saveButtonClick(3);
-        private void saveButtonClick(int whichProfile)
-        {
-            var saveButtons = new List<Button>() { saveButton1, saveButton2, saveButton3, saveButton4 };
-            saveButtons[whichProfile].ForeColor = Color.White;
-            saveButtons[whichProfile].Text = "Saved!";
-            saveButtonHighlight[whichProfile] = 1.0M;
-            editor.SaveProfile(whichProfile);
-        }
-        private void renameButton1_Click(object sender, EventArgs e) => renameProfileClick(0);
-        private void renameButton2_Click(object sender, EventArgs e) => renameProfileClick(1);
-        private void renameButton3_Click(object sender, EventArgs e) => renameProfileClick(2);
-        private void renameButton4_Click(object sender, EventArgs e) => renameProfileClick(3);
-        private void renameProfileClick(int whichProfile)
-        {
-            var popup = new RenameProfileForm(Cursor.Position.X - 83, Cursor.Position.Y - 15);
-            if (popup.ShowDialog() == DialogResult.OK)
-                editor.RenameProfile(whichProfile, popup.InputString);
-        }
-        private void UpdateProfiles(object sender, EventArgs e)
-        {
-            bool profilesVisible = (editor.State == EditorState.NOT_READY) ? false : true;
-            profileButton1.Visible = profilesVisible;
-            profileButton2.Visible = profilesVisible;
-            profileButton3.Visible = profilesVisible;
-            profileButton4.Visible = profilesVisible;
-            saveButton1.Visible = profilesVisible;
-            saveButton2.Visible = profilesVisible;
-            saveButton3.Visible = profilesVisible;
-            saveButton4.Visible = profilesVisible;
-            renameButton1.Visible = profilesVisible;
-            renameButton2.Visible = profilesVisible;
-            renameButton3.Visible = profilesVisible;
-            renameButton4.Visible = profilesVisible;
+#region Dan buttons
+        // Four buttons that set the rate to where the map reaches a dan (BeatmapEditor.SetRateForDan), each with a
+        // "Change dan" menu under it. Their dans are the DanButtons setting; Alt+Shift+(hotkey) presses one.
+        private static readonly string[] DefaultDanButtons = { "Alpha", "Beta", "Gamma", "Delta" };
+        private const string DanMenuButtonText = "Change dan ▼";
+        private static readonly Color DanMenuButtonColor = Color.FromArgb(90, 90, 134);
+        private static readonly TimeSpan DanStatusHold = TimeSpan.FromSeconds(1.6);
+        private static readonly TimeSpan DanStatusFade = TimeSpan.FromSeconds(0.5);
 
-            profileButton1.Text = editor.UserProfiles[0].Name;
-            profileButton2.Text = editor.UserProfiles[1].Name;
-            profileButton3.Text = editor.UserProfiles[2].Name;
-            profileButton4.Text = editor.UserProfiles[3].Name;
+        private OsuButton[] danButtons;
+        private Button[] danMenuButtons;
+        private DanLevel[] danTargets;
+        private ContextMenuStrip danMenu;
+        private int danMenuSlot; // the button the menu was opened for
+        private readonly ToolTip danButtonToolTip;
+        private readonly DanButtonStatus[] danStatus = { new DanButtonStatus(), new DanButtonStatus(), new DanButtonStatus(), new DanButtonStatus() };
+        private int danStatusCount;
+
+        // What a dan button's menu button says: "Finding rate..." while the search runs, then what it found. A rate
+        // that was set fades back to "Change dan" the way upstream's "Saved!" did (the rate box shows the rate); a dan
+        // out of reach, or a map that can't be rated, stays until the next press, map, long note setting or Reset.
+        private sealed class DanButtonStatus
+        {
+            public int Id;        // the press it belongs to
+            public string Text;   // null when there's nothing to show
+            public Color Color;
+            public bool Busy;     // stays until the search ends
+            public bool Keep;     // doesn't fade
+            public DateTime Shown;
         }
-        private void ProfileHotkeyHandler(object sender, EventArgs e)
+
+        /// <summary>
+        /// The DanButtons setting, e.g. "Alpha,Beta,Gamma,Delta": one dan per button. A missing or unknown name falls
+        /// back to that button's default.
+        /// </summary>
+        internal static DanLevel[] ParseDanButtons(string setting)
+        {
+            var names = (setting ?? "").Split(',');
+            var targets = new DanLevel[DefaultDanButtons.Length];
+            for (int i = 0; i < targets.Length; i++)
+                targets[i] = (i < names.Length ? DanTable.FindByName(names[i]) : null) ?? DanTable.FindByName(DefaultDanButtons[i]);
+            return targets;
+        }
+
+        internal static string FormatDanButtons(DanLevel[] targets) => string.Join(",", targets.Select(t => t.Name));
+
+        private void UpdateDanButtons(object sender, EventArgs e)
+        {
+            bool visible = editor.State != EditorState.NOT_READY;
+            bool usable = editor.CanSetRateForDan; // 4K osu!mania, and not while a map is being created
+            for (int i = 0; i < danButtons.Length; i++)
+            {
+                var button = danButtons[i];
+                var target = danTargets[i];
+                button.Visible = visible;
+                danMenuButtons[i].Visible = visible;
+                button.Text = target.DisplayName;
+                button.Enabled = usable;
+                button.ForeColor = usable ? Color.White : Colors.Disabled;
+                var color = usable ? DanButtonColor(target.Color) : Colors.TextBoxBg;
+                if (button.Color != color)
+                    button.Color = color;
+                danButtonToolTip.SetToolTip(button, string.Format(CultureInfo.InvariantCulture,
+                    "Sets the rate to the lowest at which this map rates as {0} (xdc1 {1} or more).\nAlt+Shift+{2} does the same, then Create Map.",
+                    target.DisplayName, DanTable.FormatRating(target.Threshold), HotkeyForm.KeyName(Hotkeys[i + 1])));
+                danButtonToolTip.SetToolTip(danMenuButtons[i], "Choose this button's dan");
+            }
+        }
+
+        private async void danButton_Click(object sender, EventArgs e) => await PressDanButton(Array.IndexOf(danButtons, sender));
+
+        // A dan button is filled with its dan's colour (the colour its name has everywhere else). Colours brighter
+        // than DanButtonMaxBrightness (perceived brightness, 0-255; Zeta's light blue the most) are
+        // darkened to it, keeping their hue, so the white name on the button stays readable.
+        internal const double DanButtonMaxBrightness = 150;
+        internal static Color DanButtonColor(Color dan)
+        {
+            double brightness = 0.299 * dan.R + 0.587 * dan.G + 0.114 * dan.B;
+            if (brightness <= DanButtonMaxBrightness)
+                return dan;
+            double scale = DanButtonMaxBrightness / brightness;
+            return Color.FromArgb((int)System.Math.Round(dan.R * scale), (int)System.Math.Round(dan.G * scale), (int)System.Math.Round(dan.B * scale));
+        }
+
+        // Alt+Shift+(hotkey): that dan button, then Create Map if the map now differs, as upstream's profile hotkeys
+        // did. The player is in osu! then, so a press that can't set a rate says so with a sound.
+        private async void DanHotkeyHandler(object sender, EventArgs e)
         {
             var k = (KeyEventArgs)e;
-            if (k.Alt && k.Shift)
+            int slot = DanButtonForHotkey(k);
+            if (slot < 0 || IsDanKeyRepeat(k.KeyCode))
+                return;
+            // the program the key was typed into: the hook sees the key before that window does
+            uint keyProcess = ForegroundProcessId();
+            // no 4K osu!mania map loaded, a map being created, or a map osu! has just switched to still being read
+            // (the press would be for the map on its way out; pressing again once it's in works)
+            if (!editor.CanSetRateForDan || editor.IsLoadingBeatmap)
             {
-                var KeyToProfileMapping = new Dictionary<Keys, int>()
-                {
-                    { Hotkeys[1], 0},
-                    { Hotkeys[2], 1},
-                    { Hotkeys[3], 2},
-                    { Hotkeys[4], 3}
-                };
-                if (KeyToProfileMapping.ContainsKey(k.KeyCode)) {
-                    int whichProfile = KeyToProfileMapping[k.KeyCode];
-                    editor.LoadProfile(whichProfile);
-                    if (GenerateMapButton.Enabled)
-                    {
-                        sound.Stream = Properties.Resources.hotkey;
-                        sound.Play();
-                        GenerateMapButton_Click(sender, EventArgs.Empty);
-                    }
-                }
+                DanHotkeyFailed(keyProcess);
+                return;
+            }
+            var outcome = await PressDanButton(slot);
+            if (outcome == DanRateOutcome.Reached)
+            {
+                if (GenerateMapButton.Enabled)
+                    CreateMapFromHotkey();
+            }
+            else if (outcome != null)
+                DanHotkeyFailed(keyProcess); // out of reach between 0.50x and 3.00x, or no rating (null: overtaken, say nothing)
+        }
+
+        // A held key repeats its key-down: only the first one presses the button (a repeat would otherwise press it
+        // again, sound the warning while the map is being created, or create it twice). A key-down long after the
+        // last one is a new press even without a key-up in between, which can be missed while the hook is off.
+        private Keys heldDanKey = Keys.None;
+        private DateTime heldDanKeyTime;
+        private static readonly TimeSpan DanKeyRepeatGap = TimeSpan.FromSeconds(1.5);
+
+        private bool IsDanKeyRepeat(Keys key)
+        {
+            var now = DateTime.Now;
+            bool repeat = key == heldDanKey && now - heldDanKeyTime < DanKeyRepeatGap;
+            heldDanKey = key;
+            heldDanKeyTime = now;
+            return repeat;
+        }
+
+        // by key alone: Alt and Shift are often let go first
+        private void DanHotkeyReleased(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == heldDanKey)
+                heldDanKey = Keys.None;
+        }
+
+        // What a dan hotkey that set no rate sounds like: Windows' warning sound. Only when the key was typed into osu!
+        // or mania-trainer (keyProcess: the active program at the key press, not when the search ends). The keyboard
+        // hook also sees keys typed into other programs while osu! sits at song select (Alt+Shift+F is Format
+        // Document in VS Code), and a warning there would be about nothing.
+        protected virtual void DanHotkeyFailed(uint keyProcess)
+        {
+            if (IsOsuOrTrainer(keyProcess))
+                SystemSounds.Exclamation.Play();
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint processId);
+
+        private static uint ForegroundProcessId()
+        {
+            IntPtr window = GetForegroundWindow();
+            if (window == IntPtr.Zero)
+                return 0;
+            GetWindowThreadProcessId(window, out uint processId);
+            return processId;
+        }
+
+        internal static bool IsOsuOrTrainer(uint processId)
+        {
+            if (processId == 0)
+                return false;
+            using (var self = Process.GetCurrentProcess())
+                if (self.Id == processId)
+                    return true;
+            bool osu = false;
+            foreach (var process in Process.GetProcessesByName("osu!"))
+                using (process)
+                    osu |= process.Id == processId;
+            return osu;
+        }
+
+        private int DanButtonForHotkey(KeyEventArgs k)
+        {
+            // Alt+Shift without Ctrl: AltGr reads as Ctrl+Alt, and AltGr+Shift+key types a character on some
+            // layouts (Polish: Ś, Ą), which mustn't press a dan button and create a map
+            if (!k.Alt || !k.Shift || k.Control)
+                return -1;
+            for (int i = 0; i < danButtons.Length; i++)
+                if (Hotkeys[i + 1] == k.KeyCode)
+                    return i;
+            return -1;
+        }
+
+        /// <summary>
+        /// Dan button <paramref name="slot"/>: finds and sets its rate. Returns what the search found (Reached: the rate
+        /// was set), or null when the button can't be used now (also while a map osu! has just switched to is still
+        /// being read) or the press was overtaken (by another press, or a change of map or setting).
+        /// </summary>
+        private async Task<DanRateOutcome?> PressDanButton(int slot)
+        {
+            if (slot < 0 || slot >= danButtons.Length || !editor.CanSetRateForDan || editor.IsLoadingBeatmap)
+                return null;
+            var target = danTargets[slot];
+            // what the other buttons said last is about a rate this press replaces (a search of theirs is cancelled)
+            ClearDanStatuses(except: slot);
+            int id = ShowDanStatus(slot, "Finding rate...", Colors.PaleBlue, busy: true);
+            var result = await editor.SetRateForDan(target);
+            if (IsDisposed)
+                return null;
+            if (result == null)
+            {
+                // overtaken by another press, or the map or a setting changed while it ran
+                ClearDanStatus(slot, id);
+                return null;
+            }
+            var inv = CultureInfo.InvariantCulture;
+            switch (result.Outcome)
+            {
+                case DanRateOutcome.Reached:
+                    ShowDanStatus(slot, string.Format(inv, "Set to {0:0.00}x", result.Rate), target.TextColor);
+                    break;
+                case DanRateOutcome.NeedsLowerRate:
+                    ShowDanStatus(slot, string.Format(inv, "Needs < {0:0.00}x", DanRateFinder.MinRate), Colors.Salmon, keep: true);
+                    break;
+                case DanRateOutcome.NeedsHigherRate:
+                    ShowDanStatus(slot, string.Format(inv, "Needs > {0:0.00}x", DanRateFinder.MaxRate), Colors.Salmon, keep: true);
+                    break;
+                default:
+                    ShowDanStatus(slot, "No rating", Colors.Salmon, keep: true);
+                    break;
+            }
+            return result.Outcome;
+        }
+
+        private int ShowDanStatus(int slot, string text, Color color, bool busy = false, bool keep = false)
+        {
+            var status = danStatus[slot];
+            status.Id = ++danStatusCount;
+            status.Text = text;
+            status.Color = color;
+            status.Busy = busy;
+            status.Keep = keep;
+            status.Shown = DateTime.Now;
+            danMenuButtons[slot].Text = text;
+            danMenuButtons[slot].ForeColor = color;
+            return status.Id;
+        }
+
+        // back to "Change dan", unless the status has been replaced since (by a later press)
+        private void ClearDanStatus(int slot, int id)
+        {
+            var status = danStatus[slot];
+            if (status.Id != id)
+                return;
+            status.Text = null;
+            status.Busy = false;
+            status.Keep = false;
+            danMenuButtons[slot].Text = DanMenuButtonText;
+            danMenuButtons[slot].ForeColor = DanMenuButtonColor;
+        }
+
+        // every button's status but <paramref name="except"/>'s: what they found was for another press, map or setting
+        private void ClearDanStatuses(int except = -1)
+        {
+            for (int i = 0; i < danStatus.Length; i++)
+                if (i != except)
+                    ClearDanStatus(i, danStatus[i].Id);
+        }
+
+        // fades each finished status back to "Change dan" (formAnimationTimer, every 16 ms)
+        private void formAnimationTimer_Tick(object sender, EventArgs e)
+        {
+            var now = DateTime.Now;
+            for (int i = 0; i < danStatus.Length; i++)
+            {
+                var status = danStatus[i];
+                if (status.Text == null || status.Busy || status.Keep)
+                    continue;
+                var age = now - status.Shown;
+                if (age < DanStatusHold)
+                    continue;
+                double fade = (age - DanStatusHold).TotalMilliseconds / DanStatusFade.TotalMilliseconds;
+                if (fade >= 1)
+                    ClearDanStatus(i, status.Id);
+                else
+                    danMenuButtons[i].ForeColor = JunUtils.LerpColor(status.Color, DanMenuButtonColor, (decimal)fade);
             }
         }
 
-        private List<decimal> saveButtonHighlight = new List<decimal>() { 0, 0, 0, 0 };
-        const decimal HIGHLIGHT_FADE = 0.03M;
-        private void formAnimationTimer_Tick(object sender, EventArgs e)
+        // One menu for all four buttons: every dan with its icon and threshold, the button's current dan ticked.
+        private ContextMenuStrip BuildDanMenu()
         {
-            Color startBackColor = Color.FromArgb(71, 115, 66);
-            Color endBackColor = Color.FromArgb(45, 42, 63);
-            var saveButtons = new List<Button>() { saveButton1, saveButton2, saveButton3, saveButton4 };
-            for (int i = 0; i < saveButtons.Count; i++)
+            var menu = new ContextMenuStrip(components)
             {
-                // linearly interpolate colour
-                // saveButtonHighlight 1.0 -> 0.0
-                if (saveButtonHighlight[i] > 0)
+                Renderer = new DarkMenuRenderer(),
+                ShowCheckMargin = false,
+                ShowImageMargin = true,
+                ImageScalingSize = new Size(18, 18),
+                Font = new Font("Segoe UI", 9F, FontStyle.Bold),
+                BackColor = DarkMenuRenderer.Background,
+            };
+            foreach (var level in DanTable.Levels)
+            {
+                if (level.IsExtra && level.Index > 0 && !DanTable.Levels[level.Index - 1].IsExtra)
+                    menu.Items.Add(new ToolStripSeparator());
+                var item = new ToolStripMenuItem(level.DisplayName)
                 {
-                    saveButtons[i].FlatAppearance.MouseOverBackColor = JunUtils.LerpColor(startBackColor, endBackColor, 1 - saveButtonHighlight[i]);
-                    saveButtons[i].ForeColor = JunUtils.LerpColor(Color.White, Color.FromArgb(90, 90, 134), 1 - saveButtonHighlight[i]);
-                }
-
-                // decay
-                saveButtonHighlight[i] -= HIGHLIGHT_FADE;
-                if (saveButtonHighlight[i] <= 0)
-                {
-                    saveButtonHighlight[i] = 0M;
-                    saveButtons[i].ForeColor = Color.FromArgb(90, 90, 134);
-                    saveButtons[i].Text = "Save";
-                    saveButtons[i].FlatAppearance.MouseOverBackColor = Color.Empty;
-                }
+                    Tag = level,
+                    Image = DanTable.GetIcon(level) ?? Icons.GenerateIcon(GameMode.Mania, level.Color),
+                    ImageScaling = ToolStripItemImageScaling.SizeToFit,
+                    ForeColor = level.TextColor,
+                    ShortcutKeyDisplayString = DanTable.FormatRating(level.Threshold),
+                };
+                item.Click += DanMenuItem_Click;
+                menu.Items.Add(item);
             }
+            return menu;
+        }
+
+        private void danMenuButton_Click(object sender, EventArgs e)
+        {
+            int slot = Array.IndexOf(danMenuButtons, sender);
+            if (slot < 0)
+                return;
+            PrepareDanMenu(slot);
+            danMenu.Show(danMenuButtons[slot], new Point(0, danMenuButtons[slot].Height));
+        }
+
+        // aims the menu at a button and ticks that button's dan
+        private void PrepareDanMenu(int slot)
+        {
+            danMenuSlot = slot;
+            foreach (var item in danMenu.Items.OfType<ToolStripMenuItem>())
+                item.Checked = item.Tag == danTargets[slot];
+        }
+
+        private void DanMenuItem_Click(object sender, EventArgs e)
+        {
+            if (!(sender is ToolStripMenuItem item) || !(item.Tag is DanLevel level))
+                return;
+            int slot = danMenuSlot;
+            // a search still running for this button's old dan no longer applies
+            if (danStatus[slot].Busy)
+                editor.CancelDanRateSearch();
+            danTargets[slot] = level;
+            Properties.Settings.Default.DanButtons = FormatDanButtons(danTargets);
+            Properties.Settings.Default.Save();
+            ClearDanStatus(slot, danStatus[slot].Id);
+            UpdateDanButtons(this, EventArgs.Empty);
         }
 #endregion
 
         private void RearrangeLayout(object sender, EventArgs e)
         {
-            bool profilesVisible = (editor.State == EditorState.NOT_READY) ? false : true;
-            bool extrasVisible = profilesVisible;
-            if (!profilesVisible)
+            bool danButtonsVisible = editor.State != EditorState.NOT_READY;
+            if (!danButtonsVisible)
             {
                 // not ready layout
                 middlePanel.Height = 110;
                 BottomPanel.Height = 111;
-                Height = 493 + (extrasPanel.Visible ? extrasPanel.Height : 0);
+                Height = NotReadyHeight + (extrasPanel.Visible ? extrasPanel.Height : 0);
             }
             else
             {
-                // ready layout
-                middlePanel.Height = 178;
+                // ready layout (with the dan buttons)
+                middlePanel.Height = 161;
                 BottomPanel.Height = 111 - 33;
-                Height = 531 + (extrasPanel.Visible ? extrasPanel.Height : 0);
+                Height = ReadyHeight + (extrasPanel.Visible ? extrasPanel.Height : 0);
             }
         }
         private void showExtrasButton_Click(object sender, EventArgs e)
@@ -1017,65 +1232,13 @@ namespace osu_trainer
         {
             int centerX = DesktopLocation.X + (Width / 2);
             int centerY = DesktopLocation.Y + (Height / 2);
-            var hotkeyForm = new HotkeyForm(centerX - 321/2, centerY - 217/2, Hotkeys);
+            var hotkeyForm = new HotkeyForm(centerX - 321/2, centerY - 217/2, Hotkeys, danTargets.Select(t => t.DisplayName).ToList());
             hotkeyForm.ShowDialog();
             Hotkeys = hotkeyForm.Hotkeys;
             ApplyHotkeys();
+            UpdateDanButtons(this, EventArgs.Empty); // the tooltips name the hotkeys
         }
 
-
-        private void updatesCheck_CheckedChanged(object sender, EventArgs e)
-        {
-            ToggleCheckForUpdates();
-            UpdateCheckBoxes(this, EventArgs.Empty);
-        }
-        /// <summary>
-        /// return false on failure
-        /// </summary>
-        private void ToggleCheckForUpdates()
-        {
-            string getKey(string s) { return s.Split(':')[0].Trim().ToLower(); }
-            string getValue(string s) { return s.Split(':')[1].Trim().ToLower(); }
-
-            List<string> lines;
-            try {
-                lines = File.ReadAllLines("version.txt").ToList();
-            } catch {
-                MessageBox.Show("version.txt missing or corrupt.");
-                return;
-            }
-
-            var checkForUpdatesLineIndex = lines.FindIndex(l => getKey(l) == "check for updates");
-            if (checkForUpdatesLineIndex == -1)
-            {
-                MessageBox.Show("version.txt missing or corrupt.");
-                return;
-            }
-
-            string checkForUpdatesLine = lines[checkForUpdatesLineIndex];
-            string checkForUpdatesValue = getValue(lines[checkForUpdatesLineIndex]);
-            bool toggleToTrue = new string[] { "no", "false" }.Contains(checkForUpdatesValue);
-
-            string replacementLine = $"check for updates: {(toggleToTrue ? "true" : "false")}";
-            int replaceIndex = lines.FindIndex(l => l.Split(':')[0].Trim().ToLower() == "check for updates");
-            if (replaceIndex != -1)
-                lines[replaceIndex] = replacementLine;
-
-            try {
-                File.WriteAllLines("version.txt", lines);
-            }
-            catch (UnauthorizedAccessException)
-            {
-                MessageBox.Show("Permission to write to version.txt was denied. Check your antivirus, or try running osu trainer with administrator priveledges.");
-                return;
-            }
-            catch (Exception)
-            {
-                MessageBox.Show("Unable to write to version.txt");
-                return;
-            }
-            return;
-        }
 
         private void spectrogramButton_Click(object sender, EventArgs e)
         {

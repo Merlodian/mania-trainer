@@ -33,7 +33,6 @@ namespace Utilities {
         private const int VK_SHIFT = 0x10;
         private const int VK_CONTROL = 0x11;
         private const int VK_MENU = 0x12;
-        private const int VK_CAPITAL = 0x14;
         #endregion
 
         #region Instance Variables
@@ -121,15 +120,14 @@ namespace Utilities {
 		}
 
         /// <summary>
-        /// Checks whether Alt, Shift, Control or CapsLock
+        /// Checks whether Alt, Shift or Control
         /// is pressed at the same time as the hooked key.
         /// Modifies the keyCode to include the pressed keys.
+        /// Caps Lock is left out: Keys.CapsLock is a key code, not a modifier flag, and OR-ing it in
+        /// changed the key itself (A read as U), so no hotkey worked while Caps Lock was on.
         /// </summary>
         private Keys AddModifiers(Keys key)
         {
-            //CapsLock
-            if ((GetKeyState(VK_CAPITAL) & 0x0001) != 0) key = key | Keys.CapsLock;
-
             //Shift
             if ((GetKeyState(VK_SHIFT) & 0x8000) != 0) key = key | Keys.Shift;
 

@@ -1,4 +1,5 @@
 ﻿using FsBeatmapProcessor;
+using osu_trainer.Mania;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -39,9 +40,11 @@ namespace osu_trainer
         public decimal StarRating { get; set; }
         public decimal AimRating { get; set; }
         public decimal SpeedRating { get; set; }
+
+        /// <summary>Dan rating of the edited map (osu!mania only), or null when not calculated.</summary>
+        public ManiaRating ManiaRating { get; private set; }
+
         private decimal lockedHP = 0M;
-        private decimal lockedCS = 0M;
-        private decimal lockedAR = 0M;
         private decimal lockedOD = 0M;
         private int lockedBpm = 200;
 
@@ -66,38 +69,75 @@ namespace osu_trainer
             }
         }
 
+        // A copy of the edited beatmap taken on the UI thread, so the calculation never reads a map
+        // that is being changed underneath it.
+        private class DiffCalcRequest : ConcurrentRequest
+        {
+            public Beatmap Snapshot { get; }
+            public LnConversion LnConversion { get; }
+
+            public DiffCalcRequest(Beatmap snapshot, LnConversion lnConversion) : base()
+            {
+                Snapshot = snapshot;
+                LnConversion = lnConversion;
+            }
+        }
+
         private List<BeatmapRequest> mapChangeRequests = new List<BeatmapRequest>();
         private BeatmapRequest completedBeatmapRequest = null;
         private ConcurrentRequest completedDiffCalcRequest = null;
         private bool serviceBeatmapRequestLocked = false;  // mutex for serviceBeatmapChangeRequest()
         private bool serviceDiffCalcRequestLocked = false;  // mutex for serviceDiffCalcRequest()
-        private List<ConcurrentRequest> diffCalcRequests = new List<ConcurrentRequest>();
+        private DiffCalcRequest latestDiffCalcRequest = null; // only the newest request matters
 
-        // User Profiles
-        public UserProfile[] UserProfiles = {
-            new UserProfile("Profile 1"),
-            new UserProfile("Profile 2"),
-            new UserProfile("Profile 3"),
-            new UserProfile("Profile 4")};
+        // Dan buttons (see SetRateForDan)
+        private DanRateCache danRates;                  // ratings of the loaded map at the rates searched so far
+        private CancellationTokenSource danRateSearch;  // the search running now, if any
+        private int danRateSearchNumber;
+        private decimal? danRate;                       // the rate the last dan button set, while it is still the rate (see LockedBpmFor)
 
         // public getters only
         // to set, call set methods
         public bool HpIsLocked { get; private set; } = false;
-
-        public bool CsIsLocked { get; private set; } = false;
-        public bool ArIsLocked { get; private set; } = false;
         public bool OdIsLocked { get; private set; } = false;
         public bool BpmIsLocked { get; private set; } = false;
-        public bool ScaleAR { get; private set; } = true;
-        public bool ScaleOD { get; private set; } = true;
+
+        /// <summary>The lowest rate the rate box takes. A lower one is turned down, and leaves everything as it was.</summary>
+        internal const decimal MinRate = 0.1M;
         internal EditorState State { get; private set; }
         public decimal BpmRate { get; set; } = 1.0M;
-        
+
+        /// <summary>
+        /// True while a map osu! has switched to is being read. The editor stays READY on the previous map until
+        /// the new one is in, so a rate set meanwhile would be for the map on its way out.
+        /// </summary>
+        public bool IsLoadingBeatmap => serviceBeatmapRequestLocked;
+
+        // Circle size is never edited: in osu!mania it is the key count.
+        // Approach rate has no control either: it follows the rate for osu!standard and catch maps only
+        // (see UsesApproachRate), and is left alone for mania and taiko, which don't use it.
+
         // Toggles
-        public bool ForceHardrockCirclesize { get; private set; }
         public bool NoSpinners { get; private set; }
         public bool ChangePitch { get; private set; }
         public bool HighQualityMp3s { get; private set; }
+
+        // osu!mania long note conversions (mutually exclusive)
+        public bool FullLN { get; private set; }
+        public bool NoLN { get; private set; }
+        public LnConversion LnConversion => FullLN ? LnConversion.FullLn : NoLN ? LnConversion.NoLn : LnConversion.None;
+
+        /// <summary>The long note conversion that applies to the loaded map (none unless it is osu!mania).</summary>
+        private LnConversion ActiveLnConversion => OriginalBeatmap?.Mode == GameMode.Mania ? LnConversion : LnConversion.None;
+
+        /// <summary>
+        /// The long note conversion the dan rating and the dan buttons go by. Full LN doesn't count: how much harder
+        /// a chart gets when every note becomes a long note is disputed among osu!mania players, so a Full LN chart
+        /// is rated as the original. No LN does count. Create Map still exports the Full LN chart.
+        /// </summary>
+        internal LnConversion RatingLnConversion => ActiveLnConversion == LnConversion.FullLn ? LnConversion.None : ActiveLnConversion;
+
+        private static bool UsesApproachRate(GameMode mode) => mode == GameMode.osu || mode == GameMode.CatchtheBeat;
 
         public BeatmapEditor(MainForm f)
         {
@@ -105,28 +145,22 @@ namespace osu_trainer
 
             // Load previously saved settings
             HpIsLocked = Properties.Settings.Default.HPLockedState;
-            CsIsLocked = Properties.Settings.Default.CSLockedState;
-            ArIsLocked = Properties.Settings.Default.ARLockedState;
             OdIsLocked = Properties.Settings.Default.ODLockedState;
-            ScaleAR = ArIsLocked ? false : true;
-            ScaleOD = OdIsLocked ? false : true;
 
             lockedHP = Properties.Settings.Default.LockedHPSetting;
-            lockedCS = Properties.Settings.Default.LockedCSSetting;
-            lockedAR = Properties.Settings.Default.LockedARSetting;
             lockedOD = Properties.Settings.Default.LockedODSetting;
 
             BpmIsLocked = Properties.Settings.Default.BpmLockedState;
             if (BpmIsLocked)
                 lockedBpm = Properties.Settings.Default.LockedBpmSetting;
-            else
+            else if (Properties.Settings.Default.BpmRate >= MinRate)
                 BpmRate = Properties.Settings.Default.BpmRate;
 
             ChangePitch = Properties.Settings.Default.ChangePitch;
             NoSpinners = Properties.Settings.Default.NoSpinners;
             HighQualityMp3s = Properties.Settings.Default.HighQualityMp3s;
-
-            LoadProfilesFromDisk();
+            FullLN = Properties.Settings.Default.FullLN;
+            NoLN = !FullLN && Properties.Settings.Default.NoLN;
 
             SetState(EditorState.NOT_READY);
             NotReadyReason = BadBeatmapReason.NO_BEATMAP_LOADED;
@@ -135,13 +169,9 @@ namespace osu_trainer
         public void SaveSettings()
         {
             Properties.Settings.Default.LockedHPSetting = lockedHP;
-            Properties.Settings.Default.LockedCSSetting = lockedCS;
-            Properties.Settings.Default.LockedARSetting = lockedAR;
             Properties.Settings.Default.LockedODSetting = lockedOD;
 
             Properties.Settings.Default.HPLockedState = HpIsLocked;
-            Properties.Settings.Default.CSLockedState = CsIsLocked;
-            Properties.Settings.Default.ARLockedState = ArIsLocked;
             Properties.Settings.Default.ODLockedState = OdIsLocked;
 
             Properties.Settings.Default.BpmLockedState = BpmIsLocked;
@@ -153,6 +183,8 @@ namespace osu_trainer
             Properties.Settings.Default.ChangePitch = ChangePitch;
             Properties.Settings.Default.NoSpinners = NoSpinners;
             Properties.Settings.Default.HighQualityMp3s = HighQualityMp3s;
+            Properties.Settings.Default.FullLN = FullLN;
+            Properties.Settings.Default.NoLN = NoLN;
             Properties.Settings.Default.Save();
         }
 
@@ -187,17 +219,44 @@ namespace osu_trainer
                 return;
 
             SetState(EditorState.GENERATING_BEATMAP);
+            try
+            {
+                (string osuFile, string newMp3) = WriteExportFiles();
 
-            bool compensateForDT = (NewBeatmap.ApproachRate > 10 || NewBeatmap.OverallDifficulty > 10);
+                // create and execute osz
+                AddNewBeatmapToSongFolder(Path.GetDirectoryName(OriginalBeatmap.Filename), osuFile, newMp3);
+
+                // clean up .osu
+                File.Delete(osuFile);
+            }
+            finally
+            {
+                // post. Also after a failed export (MainForm shows the error): otherwise the editor would stay in
+                // GENERATING_BEATMAP, with Create Map stuck on "Working...", until mania-trainer is restarted.
+                SetState(EditorState.READY);
+            }
+        }
+
+        /// <summary>
+        /// Writes the edited map as it will be exported: the .osu file (into the working directory) and, when the
+        /// rate changes, the new mp3. Returns their file names; newMp3 is "" when the existing audio is reused.
+        /// Separate from GenerateBeatmap so the export can be checked without opening osu!.
+        /// </summary>
+        internal (string osuFile, string newMp3) WriteExportFiles()
+        {
+            bool usesAR = UsesApproachRate(OriginalBeatmap.Mode);
+            bool compensateForDT = ((usesAR && NewBeatmap.ApproachRate > 10) || NewBeatmap.OverallDifficulty > 10);
+            LnConversion lnConversion = ActiveLnConversion;
 
             // Set metadata
             Beatmap exportBeatmap = new Beatmap(NewBeatmap);
-            ModifyBeatmapMetadata(exportBeatmap, BpmRate, ChangePitch, compensateForDT);
+            ModifyBeatmapMetadata(exportBeatmap, BpmRate, ChangePitch, compensateForDT, lnConversion);
 
             // Slow down map by 1.5x
             if (compensateForDT)
             {
-                exportBeatmap.ApproachRate      = DifficultyCalculator.CalculateMultipliedAR(NewBeatmap, 1 / 1.5M);
+                if (usesAR)
+                    exportBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(NewBeatmap, 1 / 1.5M);
                 exportBeatmap.OverallDifficulty = DifficultyCalculator.CalculateMultipliedOD(NewBeatmap, 1 / 1.5M);
                 decimal compensatedRate = (NewBeatmap.Bpm / OriginalBeatmap.Bpm) / 1.5M;
                 exportBeatmap.SetRate(compensatedRate);
@@ -221,7 +280,9 @@ namespace osu_trainer
                 // take note of this mp3 in a text file so we can clean it up later
                 string mp3ManifestFile = GetMp3ListFilePath();
                 List<string> manifest = File.ReadAllLines(mp3ManifestFile).ToList();
-                string beatmapFolder = Path.GetDirectoryName(exportBeatmap.Filename).Replace(Properties.Settings.Default.SongsFolder + "\\", "");
+                // the original's folder, which is also the export's: Path.GetDirectoryName on the export's own path
+                // throws PathTooLongException once its longer name (rate, OD, FullLN...) takes it past 260 characters
+                string beatmapFolder = JunUtils.GetBeatmapDirectoryName(OriginalBeatmap).Replace(Properties.Settings.Default.SongsFolder + "\\", "");
                 string mp3RelativePath = Path.Combine(beatmapFolder, exportBeatmap.AudioFilename);
                 manifest.Add(mp3RelativePath + " | " + exportBeatmap.Filename);
                 File.WriteAllLines(mp3ManifestFile, manifest);
@@ -230,14 +291,11 @@ namespace osu_trainer
             exportBeatmap.Filename = Path.GetFileName(exportBeatmap.Filename);
             exportBeatmap.Save();
 
-            // create and execute osz
-            AddNewBeatmapToSongFolder(Path.GetDirectoryName(OriginalBeatmap.Filename), exportBeatmap.Filename, newMp3);
+            // osu!mania long note conversion. Done on the saved file, after the rate change and spinner
+            // removal, so it always sees the final timing (SetRate rebuilds hit objects from the original map).
+            ManiaTransforms.ApplyToFile(exportBeatmap.Filename, lnConversion);
 
-            // clean up .osu
-            File.Delete(exportBeatmap.Filename);
-
-            // post
-            SetState(EditorState.READY);
+            return (exportBeatmap.Filename, newMp3);
         }
 
         private void AddNewBeatmapToSongFolder(string songFolder, string newBeatmapFile, string newMp3)
@@ -395,8 +453,11 @@ namespace osu_trainer
             // no new requests, we can commit to using this beatmap
             OriginalBeatmap = candidateOriginalBeatmap;
             NewBeatmap = candidateNewBeatmap;
+            CancelDanRateSearch();
+            danRates = null;
             if (OriginalBeatmap == null)
             {
+                ClearDifficulty();
                 SetState(EditorState.NOT_READY);
                 NotReadyReason = BadBeatmapReason.ERROR_LOADING_BEATMAP;
                 BeatmapSwitched?.Invoke(this, EventArgs.Empty);
@@ -405,6 +466,7 @@ namespace osu_trainer
             {
                 if (OriginalBeatmap.HitObjectCount == 0)
                 {
+                    ClearDifficulty();
                     SetState(EditorState.NOT_READY);
                     NotReadyReason = BadBeatmapReason.EMPTY_MAP;
                     BeatmapSwitched?.Invoke(this, EventArgs.Empty);
@@ -416,21 +478,12 @@ namespace osu_trainer
                         SetBpm(lockedBpm);
                     NewBeatmap.SetRate(BpmRate);
 
-                    // Apply bpm scaled settings
-                    if (ScaleAR) NewBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(candidateOriginalBeatmap, BpmRate);
-                    if (ScaleOD) NewBeatmap.OverallDifficulty = DifficultyCalculator.CalculateMultipliedOD(candidateOriginalBeatmap, BpmRate);
+                    // Apply bpm scaled settings (OD keeps the map's value: it doesn't scale with the rate)
+                    if (UsesApproachRate(candidateOriginalBeatmap.Mode)) NewBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(candidateOriginalBeatmap, BpmRate);
 
                     // Apply locked settings to new map
                     if (HpIsLocked) NewBeatmap.HPDrainRate = lockedHP;
-                    if (CsIsLocked) NewBeatmap.CircleSize = lockedCS;
-                    if (ArIsLocked)
-                    {
-                        NewBeatmap.ApproachRate = lockedAR;
-                    }
                     if (OdIsLocked) NewBeatmap.OverallDifficulty = lockedOD;
-
-                    // Apply Hardrock
-                    if (ForceHardrockCirclesize) NewBeatmap.CircleSize = OriginalBeatmap.CircleSize * 1.3M;
 
                     SetState(EditorState.READY);
                     RequestDiffCalc();
@@ -442,9 +495,12 @@ namespace osu_trainer
             serviceBeatmapRequestLocked = false;
         }
 
+        // Must be called on the UI thread: it snapshots NewBeatmap and the long note setting.
         public void RequestDiffCalc()
         {
-            diffCalcRequests.Add(new ConcurrentRequest());
+            if (NewBeatmap == null)
+                return;
+            latestDiffCalcRequest = new DiffCalcRequest(new Beatmap(NewBeatmap), RatingLnConversion);
 
             // acquire mutually exclusive entry into this method
             if (!serviceDiffCalcRequestLocked)
@@ -456,30 +512,58 @@ namespace osu_trainer
         {
             // acquire mutually exclusive entry into this method
             serviceDiffCalcRequestLocked = true;
-
-            decimal stars = 0.0M, aim = 0.0M, speed = 0.0M;
-            while (completedDiffCalcRequest == null || completedDiffCalcRequest.RequestNumber != diffCalcRequests.Last().RequestNumber)
+            try
             {
-                completedDiffCalcRequest = diffCalcRequests.Last();
-                try
+                decimal stars = 0.0M, aim = 0.0M, speed = 0.0M;
+                ManiaRating maniaRating = null;
+                while (completedDiffCalcRequest == null || completedDiffCalcRequest.RequestNumber != latestDiffCalcRequest.RequestNumber)
                 {
-                    (stars, aim, speed) = await Task.Run(() => DifficultyCalculator.CalculateStarRating(NewBeatmap));
+                    var request = latestDiffCalcRequest;
+                    completedDiffCalcRequest = request;
+                    if (request.Snapshot.Mode == GameMode.Mania)
+                    {
+                        // osu!mania: xdc1 rating -> dan (never throws)
+                        (stars, aim, speed) = (0, 0, 0);
+                        maniaRating = await Task.Run(() => ManiaDifficulty.Calculate(request.Snapshot, request.LnConversion));
+                    }
+                    else
+                    {
+                        maniaRating = null;
+                        try
+                        {
+                            (stars, aim, speed) = await Task.Run(() => DifficultyCalculator.CalculateStarRating(request.Snapshot));
+                        }
+                        catch (Exception e)
+                        {
+                            Console.WriteLine(e);
+                            (stars, aim, speed) = (0, 0, 0);
+                        }
+                    }
+                    // if a new request came in, invalidate the diffcalc result and service the new request
                 }
-                catch (Exception e)
+                // We serviced the last request, so we can commit to the diffcalc result. If the map failed to load
+                // in the meantime, the result belongs to a map that's gone: keep ClearDifficulty's empty values
+                // (and there's no NewBeatmap for the BeatmapModified handlers to read).
+                if (State != EditorState.NOT_READY)
                 {
-                    Console.WriteLine(e);
-                    Console.WriteLine("lol asdfasdf;lkjasdf");
-                    (stars, aim, speed) = (0, 0, 0);
+                    StarRating = stars;
+                    AimRating = aim;
+                    SpeedRating = speed;
+                    ManiaRating = maniaRating;
+                    BeatmapModified?.Invoke(this, EventArgs.Empty);
                 }
-                // if a new request came in, invalidate the diffcalc result and service the new request
             }
-            // we serviced the last request, so we can commit to the diffcalc result
-            StarRating = stars;
-            AimRating = aim;
-            SpeedRating = speed;
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
+            finally
+            {
+                // released even if an event handler throws, so later calculations still run
+                serviceDiffCalcRequestLocked = false;
+            }
+        }
 
-            serviceDiffCalcRequestLocked = false;
+        private void ClearDifficulty()
+        {
+            StarRating = AimRating = SpeedRating = 0;
+            ManiaRating = null;
         }
 
         public (decimal, decimal, decimal) GetOriginalBpmData() => GetBpmData(OriginalBeatmap);
@@ -510,95 +594,15 @@ namespace osu_trainer
             BeatmapModified?.Invoke(this, EventArgs.Empty);
         }
 
-        public void SetCS(decimal value)
-        {
-            if (State != EditorState.READY)
-                return;
-
-            ForceHardrockCirclesize = false;
-
-            NewBeatmap.CircleSize = value;
-            if (CsIsLocked)
-                lockedCS = value;
-            RequestDiffCalc();
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
-        public void SetAR(decimal value)
-        {
-            if (State != EditorState.READY)
-                return;
-
-            NewBeatmap.ApproachRate = value;
-            if (ArIsLocked)
-                lockedAR = value;
-
-            ScaleAR = false;
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
-        public void ToggleArLock()
-        {
-            ArIsLocked = !ArIsLocked;
-            if (ArIsLocked)
-            {
-                ScaleAR = false;
-                lockedAR = NewBeatmap.ApproachRate;
-            }
-            else
-            {
-                SetScaleAR(true);
-            }
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
-        public void SetScaleAR(bool value)
-        {
-            ScaleAR = value;
-
-            if (State == EditorState.NOT_READY)
-                return;
-
-            // not applicable for taiko or mania
-            if (ScaleAR && NewBeatmap.Mode != GameMode.Taiko && NewBeatmap.Mode != GameMode.Mania)
-            {
-                NewBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(OriginalBeatmap, BpmRate);
-                BeatmapModified?.Invoke(this, EventArgs.Empty);
-            }
-            ArIsLocked = false;
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
-        public void SetScaleOD(bool value)
-        {
-            ScaleOD = value;
-
-            if (State == EditorState.NOT_READY)
-                return;
-
-            if (ScaleOD)
-            {
-                NewBeatmap.OverallDifficulty = DifficultyCalculator.CalculateMultipliedOD(OriginalBeatmap, BpmRate);
-                BeatmapModified?.Invoke(this, EventArgs.Empty);
-            }
-            OdIsLocked = false;
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
         public void SetOD(decimal value)
         {
             if (State != EditorState.READY)
                 return;
 
-            ForceHardrockCirclesize = false;
-
             NewBeatmap.OverallDifficulty = value;
             if (OdIsLocked)
                 lockedOD = value;
 
-            ScaleOD = false;
             BeatmapModified?.Invoke(this, EventArgs.Empty);
             ControlsModified?.Invoke(this, EventArgs.Empty);
         }
@@ -618,28 +622,12 @@ namespace osu_trainer
             ControlsModified?.Invoke(this, EventArgs.Empty);
         }
 
-        public void ToggleCsLock()
-        {
-            CsIsLocked = !CsIsLocked;
-            ForceHardrockCirclesize = false;
-            if (CsIsLocked)
-            {
-                lockedCS = NewBeatmap.CircleSize;
-            }
-            else
-            {
-                NewBeatmap.CircleSize = OriginalBeatmap.CircleSize;
-                BeatmapModified?.Invoke(this, EventArgs.Empty);
-            }
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-
         public void ToggleBpmLock()
         {
             BpmIsLocked = !BpmIsLocked;
             if (BpmIsLocked && NewBeatmap != null)
             {
-                lockedBpm = (int)NewBeatmap.Bpm;
+                lockedBpm = LockedBpmFor(BpmRate);
                 BeatmapModified?.Invoke(this, EventArgs.Empty);
             }
             ControlsModified?.Invoke(this, EventArgs.Empty);
@@ -648,27 +636,42 @@ namespace osu_trainer
         public void ToggleOdLock()
         {
             OdIsLocked = !OdIsLocked;
-            ForceHardrockCirclesize = false;
             if (OdIsLocked)
             {
-                ScaleOD = false;
                 lockedOD = NewBeatmap.OverallDifficulty;
             }
-            else
+            else if (State != EditorState.NOT_READY)
             {
-                SetScaleOD(true);
+                // back to the map's own OD, as unlocking HP does
+                NewBeatmap.OverallDifficulty = OriginalBeatmap.OverallDifficulty;
+                BeatmapModified?.Invoke(this, EventArgs.Empty);
             }
             ControlsModified?.Invoke(this, EventArgs.Empty);
         }
 
         public void SetBpmMultiplier(decimal multiplier)
         {
+            if (multiplier < MinRate)
+                return; // turned down before anything changes (the locked BPM, the dan button's mark, a dan search)
             if (BpmIsLocked)
-            {
-                int bpm = (int)(OriginalBeatmap.Bpm * multiplier);
-                lockedBpm = bpm;
-            }
+                lockedBpm = LockedBpmFor(multiplier);
             ApplyBpmMultiplier(multiplier);
+        }
+
+        /// <summary>
+        /// The whole BPM the BPM lock keeps for <paramref name="rate"/>: the map's BPM times the rate as the New BPM box
+        /// shows it, rounded to the nearest BPM. A dan button's rate is rounded up instead, so loading a map at the
+        /// locked BPM never makes it slower than that rate, and the map still reaches the dan. Before that rounding up,
+        /// the product is rounded to 9 decimals. A beat length is stored with about 15 significant digits (180 BPM is
+        /// 333.333333333333 ms), and the noise that leaves (180 BPM x 1.50 = 270.00000000000027) mustn't add a whole
+        /// BPM.
+        /// </summary>
+        private int LockedBpmFor(decimal rate)
+        {
+            if (OriginalBeatmap == null)
+                return lockedBpm;
+            decimal bpm = OriginalBeatmap.Bpm * rate;
+            return (int)(rate == danRate ? Math.Ceiling(Math.Round(bpm, 9)) : Math.Round(bpm));
         }
 
         public void SetBpm(int bpm)
@@ -687,10 +690,11 @@ namespace osu_trainer
 
         private void ApplyBpmMultiplier(decimal multiplier)
         {
-            if (BpmRate == multiplier)
-                return;
-            if (multiplier < 0.1M)
-                BeatmapModified?.Invoke(this, EventArgs.Empty); // reject this value and revert view
+            if (BpmRate == multiplier || multiplier < MinRate)
+                return; // upstream "rejected" a rate under 0.10x but applied it anyway, and 0 divided by zero
+            if (multiplier != danRate)
+                danRate = null; // set some other way: no longer a dan button's rate
+            CancelDanRateSearch(); // a dan button's answer would undo this rate
 
             BpmRate = multiplier;
 
@@ -699,16 +703,8 @@ namespace osu_trainer
                 return;
 
             // scale AR (not applicable for taiko or mania)
-            if (ScaleAR && !ArIsLocked && NewBeatmap.Mode != GameMode.Taiko && NewBeatmap.Mode != GameMode.Mania)
+            if (UsesApproachRate(NewBeatmap.Mode))
                 NewBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(OriginalBeatmap, BpmRate);
-
-            // scale OD
-            if (ScaleOD && !OdIsLocked)
-            {
-                NewBeatmap.OverallDifficulty = GetScaledOD();
-                if (ForceHardrockCirclesize)
-                    NewBeatmap.OverallDifficulty = JunUtils.Clamp(GetScaledOD() * 1.4M, 0M, 10M);
-            }
 
             // modify beatmap timing
             NewBeatmap.SetRate(BpmRate);
@@ -727,23 +723,43 @@ namespace osu_trainer
         {
             NoSpinners = !NoSpinners;
             ControlsModified?.Invoke(this, EventArgs.Empty);
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
+            if (State != EditorState.NOT_READY)
+                BeatmapModified?.Invoke(this, EventArgs.Empty);
         }
-        internal void ToggleHrEmulation()
+
+        /// <summary>Full LN: turn every tap into a long note. Turns No LN off.</summary>
+        public void ToggleFullLN()
         {
-            ForceHardrockCirclesize = !ForceHardrockCirclesize;
-            CsIsLocked = false;
-            if (ForceHardrockCirclesize)
+            var rating = RatingLnConversion;
+            FullLN = !FullLN;
+            if (FullLN)
+                NoLN = false;
+            OnLnConversionChanged(rating);
+        }
+
+        /// <summary>No LN: turn every long note into a tap. Turns Full LN off.</summary>
+        public void ToggleNoLN()
+        {
+            var rating = RatingLnConversion;
+            NoLN = !NoLN;
+            if (NoLN)
+                FullLN = false;
+            OnLnConversionChanged(rating);
+        }
+
+        // ratingBefore: the conversion the rating went by before the toggle. A dan button search only goes stale when
+        // that changes (Full LN on or off alone doesn't change the rating).
+        private void OnLnConversionChanged(LnConversion ratingBefore)
+        {
+            if (RatingLnConversion != ratingBefore)
             {
-                NewBeatmap.CircleSize = OriginalBeatmap.CircleSize * 1.3M;
+                CancelDanRateSearch();
+                if (State != EditorState.NOT_READY)
+                    RequestDiffCalc();
             }
-            else
-            {
-                NewBeatmap.CircleSize = OriginalBeatmap.CircleSize;
-            }
-            RequestDiffCalc();
             ControlsModified?.Invoke(this, EventArgs.Empty);
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
+            if (State != EditorState.NOT_READY)
+                BeatmapModified?.Invoke(this, EventArgs.Empty);
         }
 
         public GameMode? GetMode()
@@ -753,17 +769,20 @@ namespace osu_trainer
 
         public decimal GetScaledAR() => DifficultyCalculator.CalculateMultipliedAR(OriginalBeatmap, BpmRate);
 
-        public decimal GetScaledOD() => DifficultyCalculator.CalculateMultipliedOD(OriginalBeatmap, BpmRate);
+        /// <summary>The tag in every map mania-trainer makes: searching "maniatrainer" in osu! lists them.</summary>
+        internal const string GeneratedMapTag = "maniatrainer";
+        /// <summary>The tag osu-trainer puts in the maps it makes; mania-trainer adds it as well.</summary>
+        internal const string OsuTrainerTag = "osutrainer";
+        internal static bool IsGeneratedMap(Beatmap map) => map.Tags.Contains(GeneratedMapTag) || map.Tags.Contains(OsuTrainerTag);
 
         public bool NewMapIsDifferent()
         {
             return (
                 NewBeatmap.HPDrainRate != OriginalBeatmap.HPDrainRate ||
-                NewBeatmap.CircleSize != OriginalBeatmap.CircleSize ||
-                NewBeatmap.ApproachRate != OriginalBeatmap.ApproachRate ||
                 NewBeatmap.OverallDifficulty != OriginalBeatmap.OverallDifficulty ||
                 Math.Abs(BpmRate - 1.0M) > 0.001M ||
-                NoSpinners
+                NoSpinners ||
+                ActiveLnConversion != LnConversion.None
             );
         }
 
@@ -784,8 +803,9 @@ namespace osu_trainer
                 Console.WriteLine("Message: " + ex.Message);
                 Console.WriteLine("Stack Trace: " + ex.StackTrace);
 
-                OriginalBeatmap = null;
-                NewBeatmap = null;
+                // Don't clear OriginalBeatmap / NewBeatmap here: this runs on a worker thread while the editor is
+                // still READY, so a rating finishing meanwhile would hand them to the UI as null.
+                // ServiceBeatmapChangeRequest commits the null result (and NOT_READY) on the UI thread.
                 return null;
             }
             // Check if beatmap was loaded successfully
@@ -795,8 +815,8 @@ namespace osu_trainer
                 return null;
             }
 
-            // Check if this map was generated by osu-trainer
-            if (retMap.Tags.Contains("osutrainer"))
+            // Check if this map was generated by mania-trainer (or osu-trainer, which tags "osutrainer" only)
+            if (IsGeneratedMap(retMap))
             {
                 // Try to find original unmodified version
                 foreach (string diff in Directory.GetFiles(Path.GetDirectoryName(retMap.Filename), "*.osu"))
@@ -804,7 +824,7 @@ namespace osu_trainer
                     Beatmap map = BeatmapConstructorWrapper(diff);
                     // FIXME: Earlier beatmaps will not contain a beatmap ID tag, and BeatmapID will be 0.
                     // What is the method for determining the original diff in this case?
-                    if (!map.Tags.Contains("osutrainer") && map.BeatmapID == retMap.BeatmapID)
+                    if (!IsGeneratedMap(map) && map.BeatmapID == retMap.BeatmapID)
                     {
                         retMap = map;
                         break;
@@ -819,7 +839,7 @@ namespace osu_trainer
         // OUT: beatmap.Filename
         // OUT: beatmap.AudioFilename
         // OUT: beatmap.Tags
-        private void ModifyBeatmapMetadata(Beatmap map, decimal multiplier, bool changePitch = false, bool preDT = false)
+        private void ModifyBeatmapMetadata(Beatmap map, decimal multiplier, bool changePitch, bool preDT, LnConversion lnConversion)
         {
             // Difficulty Name and AudioFilename
             if (preDT)
@@ -842,24 +862,25 @@ namespace osu_trainer
             }
 
             // Difficulty Name - Difficulty Settings
-            string HPCSAROD = "";
+            string HPAROD = "";
             if (NewBeatmap.HPDrainRate != OriginalBeatmap.HPDrainRate)
-                HPCSAROD += $" HP{NewBeatmap.HPDrainRate:0.#}";
+                HPAROD += $" HP{NewBeatmap.HPDrainRate:0.#}";
 
-            if (   OriginalBeatmap.Mode != GameMode.Taiko
-                && OriginalBeatmap.Mode != GameMode.Mania
-                && NewBeatmap.CircleSize != OriginalBeatmap.CircleSize)
-                HPCSAROD += $" CS{NewBeatmap.CircleSize:0.#}";
-
-            if (   OriginalBeatmap.Mode != GameMode.Taiko
-                && OriginalBeatmap.Mode != GameMode.Mania
+            if (   UsesApproachRate(OriginalBeatmap.Mode)
                 && (NewBeatmap.ApproachRate != GetScaledAR() || NewBeatmap.ApproachRate > 10M))
-                HPCSAROD += $" AR{NewBeatmap.ApproachRate:0.#}";
+                HPAROD += $" AR{NewBeatmap.ApproachRate:0.#}";
 
-            if (NewBeatmap.OverallDifficulty != GetScaledOD() || NewBeatmap.OverallDifficulty > 10M)
-                HPCSAROD += $" OD{NewBeatmap.OverallDifficulty:0.#}";
+            if (NewBeatmap.OverallDifficulty != OriginalBeatmap.OverallDifficulty || NewBeatmap.OverallDifficulty > 10M)
+                HPAROD += $" OD{NewBeatmap.OverallDifficulty:0.#}";
 
-            map.Version += HPCSAROD;
+            map.Version += HPAROD;
+
+            // Long note conversion. This also keeps the file name (built from Version below) different
+            // from the original's when the conversion is the only change.
+            if (lnConversion == LnConversion.FullLn)
+                map.Version += " FullLN";
+            else if (lnConversion == LnConversion.NoLn)
+                map.Version += " NoLN";
 
             //if (NoSpinners)
             //    map.Version += " nospin";
@@ -872,9 +893,12 @@ namespace osu_trainer
             map.Filename   = Path.GetDirectoryName(map.Filename) + $"\\{artist} - {title} ({creator}) [{diff}].osu";
 
             // make this map searchable in the in-game menus
-            var TagsWithOsutrainer = map.Tags;
-            TagsWithOsutrainer.Add("osutrainer");
-            map.Tags = TagsWithOsutrainer; // need to assign like this because Tags is an immutable list
+            // ("osutrainer" too, so osu-trainer and an "osutrainer" search in osu! still know these maps)
+            var tags = map.Tags;
+            foreach (string tag in new[] { GeneratedMapTag, OsuTrainerTag })
+                if (!tags.Contains(tag))
+                    tags.Add(tag);
+            map.Tags = tags; // need to assign like this because Tags is an immutable list
         }
 
         // dominant, min, max
@@ -884,234 +908,20 @@ namespace osu_trainer
             if (State != EditorState.READY)
                 return;
             NewBeatmap.HPDrainRate = OriginalBeatmap.HPDrainRate;
-            NewBeatmap.CircleSize = OriginalBeatmap.CircleSize;
             NewBeatmap.ApproachRate = OriginalBeatmap.ApproachRate;
             NewBeatmap.OverallDifficulty = OriginalBeatmap.OverallDifficulty;
             HpIsLocked = false;
-            CsIsLocked = false;
-            ArIsLocked = false;
             OdIsLocked = false;
             BpmIsLocked = false;
-            ForceHardrockCirclesize = false;
-            ScaleAR = true;
-            ScaleOD = true;
+            FullLN = false;
+            NoLN = false;
+            CancelDanRateSearch();
             BpmRate = 1.0M;
+            danRate = null;
             NewBeatmap.SetRate(1.0M);
             RequestDiffCalc();
             ControlsModified?.Invoke(this, EventArgs.Empty);
             BeatmapModified?.Invoke(this, EventArgs.Empty);
-        }
-
-#region User Profile Management
-        const string UserProfilesFile = "userprofiles.txt";
-        public void SaveProfilesToDisk()
-        {
-            try
-            {
-                using (var writer = new StreamWriter(UserProfilesFile, false))
-                {
-                    foreach (var profile in UserProfiles)
-                    {
-                        writer.WriteLine(profile.Name);
-                        writer.WriteLine(profile.HpIsLocked);
-                        writer.WriteLine(profile.CsIsLocked);
-                        writer.WriteLine(profile.ArIsLocked);
-                        writer.WriteLine(profile.OdIsLocked);
-                        writer.WriteLine(profile.lockedHP);
-                        writer.WriteLine(profile.lockedCS);
-                        writer.WriteLine(profile.lockedAR);
-                        writer.WriteLine(profile.lockedOD);
-                        writer.WriteLine(profile.ScaleAR);
-                        writer.WriteLine(profile.ScaleOD);
-                        writer.WriteLine(profile.ForceHardrockCirclesize);
-                        writer.WriteLine(profile.ChangePitch);
-                        writer.WriteLine(profile.NoSpinners);
-                        writer.WriteLine(profile.BpmIsLocked);
-                        writer.WriteLine(profile.lockedBpm);
-                        writer.WriteLine(profile.BpmMultiplier);
-                    }
-                }
-            }
-            catch (UnauthorizedAccessException)
-            {
-                MessageBox.Show("Permission to write to version.txt was denied. Check your antivirus, or try running osu trainer with administrator priveledges.");
-            }
-            catch (Exception e)
-            {
-                MessageBox.Show("Unable to save profiles." + Environment.NewLine + Environment.NewLine + e.Message);
-            }
-        }
-        public void LoadProfilesFromDisk()
-        {
-            if (!File.Exists(UserProfilesFile))
-                return;
-            try
-            {
-                var lines = File.ReadAllLines(UserProfilesFile);
-                for (int i = 0; i < UserProfiles.Length; i++)
-                {
-                    int offset = i * 17;
-                    UserProfiles[i].Name = lines[offset + 0];
-                    UserProfiles[i].HpIsLocked = lines[offset + 1] == "True";
-                    UserProfiles[i].CsIsLocked = lines[offset + 2] == "True";
-                    UserProfiles[i].ArIsLocked = lines[offset + 3] == "True";
-                    UserProfiles[i].OdIsLocked = lines[offset + 4] == "True";
-                    UserProfiles[i].lockedHP = decimal.Parse(lines[offset + 5]);
-                    UserProfiles[i].lockedCS = decimal.Parse(lines[offset + 6]);
-                    UserProfiles[i].lockedAR = decimal.Parse(lines[offset + 7]);
-                    UserProfiles[i].lockedOD = decimal.Parse(lines[offset + 8]);
-                    UserProfiles[i].ScaleAR = lines[offset + 9] == "True";
-                    UserProfiles[i].ScaleOD = lines[offset + 10] == "True";
-                    UserProfiles[i].ForceHardrockCirclesize = lines[offset + 11] == "True";
-                    UserProfiles[i].ChangePitch = lines[offset + 12] == "True";
-                    UserProfiles[i].NoSpinners = lines[offset + 13] == "True";
-                    UserProfiles[i].BpmIsLocked = lines[offset + 14] == "True";
-                    UserProfiles[i].lockedBpm = int.Parse(lines[offset + 15]);
-                    UserProfiles[i].BpmMultiplier = decimal.Parse(lines[offset + 16]);
-                }
-            }
-            catch
-            {
-                // load empty profiles
-                for (int i = 0; i < UserProfiles.Length; i++)
-                    UserProfiles[i] = new UserProfile($"Profile {i + 1}");
-            }
-        }
-        public void SaveProfile(int whichProfile)
-        {
-            int i = whichProfile;
-            UserProfiles[i].HpIsLocked = HpIsLocked;
-            UserProfiles[i].CsIsLocked = CsIsLocked;
-            UserProfiles[i].ArIsLocked = ArIsLocked;
-            UserProfiles[i].OdIsLocked = OdIsLocked;
-            UserProfiles[i].lockedHP = lockedHP;
-            UserProfiles[i].lockedCS = lockedCS;
-            UserProfiles[i].lockedAR = lockedAR;
-            UserProfiles[i].lockedOD = lockedOD;
-            // If HP/CS/AR/OD has been changed, save it as locked regardless of locked state
-            // After testing this is just the way I expected it to work
-            // However, if scale AR/OD is selected, locked setting must be off
-            if (NewBeatmap.HPDrainRate != OriginalBeatmap.HPDrainRate)
-            {
-                UserProfiles[i].HpIsLocked = true;
-                UserProfiles[i].lockedHP = NewBeatmap.HPDrainRate;
-            }
-            if (NewBeatmap.CircleSize != OriginalBeatmap.CircleSize)
-            {
-                UserProfiles[i].CsIsLocked = true;
-                UserProfiles[i].lockedCS = NewBeatmap.CircleSize;
-            }
-            if (ScaleAR)
-            {
-                UserProfiles[i].ScaleAR = true;
-                UserProfiles[i].ArIsLocked = false;
-            } else if (NewBeatmap.ApproachRate != OriginalBeatmap.ApproachRate)
-            {
-                UserProfiles[i].ScaleAR = false;
-                UserProfiles[i].ArIsLocked = true;
-                UserProfiles[i].lockedAR = NewBeatmap.ApproachRate;
-            }
-            if (ScaleOD)
-            {
-                UserProfiles[i].ScaleOD = true;
-                UserProfiles[i].OdIsLocked = false;
-            } else if (NewBeatmap.OverallDifficulty != OriginalBeatmap.OverallDifficulty)
-            {
-                UserProfiles[i].ScaleOD = false;
-                UserProfiles[i].OdIsLocked = true;
-                UserProfiles[i].lockedOD = NewBeatmap.OverallDifficulty;
-            }
-
-            UserProfiles[i].ForceHardrockCirclesize = ForceHardrockCirclesize;
-            UserProfiles[i].ChangePitch = ChangePitch;
-            UserProfiles[i].NoSpinners = NoSpinners;
-
-            UserProfiles[i].BpmIsLocked = BpmIsLocked;
-            UserProfiles[i].lockedBpm = lockedBpm;
-            UserProfiles[i].BpmMultiplier = BpmRate;
-        }
-        public void RenameProfile(int whichProfile, string name)
-        {
-            UserProfiles[whichProfile].Name = name;
-            ControlsModified?.Invoke(this, EventArgs.Empty);
-        }
-        public void LoadProfile(int whichProfile)
-        {
-            int i = whichProfile;
-
-            // locked settings:
-            if (UserProfiles[i].HpIsLocked)
-            {
-                HpIsLocked = true;
-                lockedHP = UserProfiles[i].lockedHP;
-                NewBeatmap.HPDrainRate = UserProfiles[i].lockedHP;
-            }
-            else
-            {
-                HpIsLocked = false;
-                NewBeatmap.HPDrainRate = OriginalBeatmap.HPDrainRate;
-            }
-            if (UserProfiles[i].CsIsLocked)
-            {
-                CsIsLocked = true;
-                lockedCS = UserProfiles[i].lockedCS;
-                NewBeatmap.CircleSize = UserProfiles[i].lockedCS;
-            }
-            else
-            {
-                CsIsLocked = false;
-                NewBeatmap.CircleSize = OriginalBeatmap.CircleSize;
-            }
-            if (UserProfiles[i].ArIsLocked)
-            {
-                ArIsLocked = true;
-                lockedAR = UserProfiles[i].lockedAR;
-                NewBeatmap.ApproachRate = UserProfiles[i].lockedAR;
-            }
-            else
-            {
-                ArIsLocked = false;
-                NewBeatmap.ApproachRate = OriginalBeatmap.ApproachRate;
-            }
-            if (UserProfiles[i].OdIsLocked)
-            {
-                OdIsLocked = true;
-                lockedOD = UserProfiles[i].lockedOD;
-                NewBeatmap.OverallDifficulty = UserProfiles[i].lockedOD;
-            }
-            else
-            {
-                OdIsLocked = false;
-                NewBeatmap.OverallDifficulty = OriginalBeatmap.OverallDifficulty;
-            }
-
-            ForceHardrockCirclesize = UserProfiles[i].ForceHardrockCirclesize;
-            if (ForceHardrockCirclesize) NewBeatmap.CircleSize = OriginalBeatmap.CircleSize * 1.3M;
-            ChangePitch = UserProfiles[i].ChangePitch;
-            NoSpinners = UserProfiles[i].NoSpinners;
-
-            if (UserProfiles[i].BpmIsLocked)
-            {
-                // Load Exact BPM
-                BpmIsLocked = true;
-                SetBpm(UserProfiles[i].lockedBpm);
-            }
-            else
-            {
-                // Load BPM Multipier
-                BpmIsLocked = false;
-                ApplyBpmMultiplier(UserProfiles[i].BpmMultiplier);
-            }
-
-            // Scaled settings
-            ScaleAR = UserProfiles[i].ScaleAR;
-            ScaleOD = UserProfiles[i].ScaleOD;
-            if (ScaleAR) NewBeatmap.ApproachRate = DifficultyCalculator.CalculateMultipliedAR(OriginalBeatmap, BpmRate);
-            if (ScaleOD) NewBeatmap.OverallDifficulty = DifficultyCalculator.CalculateMultipliedOD(OriginalBeatmap, BpmRate);
-
-            RequestDiffCalc();
-            BeatmapModified?.Invoke(this, EventArgs.Empty);
-            ControlsModified?.Invoke(this, EventArgs.Empty);
         }
 
         internal void ToggleHighQualityMp3s()
@@ -1120,6 +930,93 @@ namespace osu_trainer
             ControlsModified?.Invoke(this, EventArgs.Empty);
         }
 
+#region Dan buttons
+        /// <summary>
+        /// True when the dan buttons can be used: a 4K osu!mania map is loaded and nothing is being exported.
+        /// Decided from the map itself, not from the rating on show, which can still be the previous map's.
+        /// </summary>
+        public bool CanSetRateForDan =>
+            State == EditorState.READY
+            && OriginalBeatmap?.Mode == GameMode.Mania
+            && ManiaDifficulty.KeyCount(OriginalBeatmap) == 4
+            && Xdc1.IsAvailable;
+
+        /// <summary>
+        /// A dan button: sets the rate to the lowest one, in 0.01x steps from 0.50x to 3.00x, at which the map (with the
+        /// current long note setting) rates as <paramref name="target"/>, the way the window shows ratings. Leaves the
+        /// rate alone when no rate in that range does. Call on the UI thread; the ratings are worked out on the thread pool.
+        /// </summary>
+        /// <returns>
+        /// What the search found; null when it no longer applies because, before it finished, it was cancelled
+        /// (<see cref="CancelDanRateSearch"/>), another dan button was pressed, the map, the long note setting or the
+        /// rate changed, another map started loading, or the editor stopped being ready.
+        /// </returns>
+        public async Task<DanRateResult> SetRateForDan(DanLevel target)
+        {
+            if (target == null || !CanSetRateForDan)
+                return null;
+            var map = OriginalBeatmap;
+            var conversion = RatingLnConversion;
+            decimal rate = BpmRate;
+            if (danRates == null || !danRates.IsFor(map, conversion))
+                danRates = new DanRateCache(map, conversion);
+            var cache = danRates;
+            int guess = GuessDanRateStep(target);
+
+            danRateSearch?.Cancel();
+            var search = danRateSearch = new CancellationTokenSource();
+            int number = ++danRateSearchNumber;
+            DanRateResult result;
+            try
+            {
+                result = await Task.Run(() => DanRateFinder.Find(cache.RatingAt, target, guess, search.Token));
+            }
+            catch (OperationCanceledException)
+            {
+                return null;
+            }
+            finally
+            {
+                if (danRateSearch == search)
+                    danRateSearch = null;
+            }
+
+            // Only the newest search, not cancelled (Find checks only between ratings, so a cancel during the last
+            // one gets here), for the map and settings it started on, with no other map on its way in (the editor
+            // stays READY on the old map while a new one loads). Exactly READY: during an export NewBeatmap is being
+            // written out and must not change.
+            if (search.IsCancellationRequested || number != danRateSearchNumber || serviceBeatmapRequestLocked
+                || State != EditorState.READY || !ReferenceEquals(OriginalBeatmap, map)
+                || RatingLnConversion != conversion || BpmRate != rate)
+                return null;
+            if (result.Outcome == DanRateOutcome.Reached)
+            {
+                // A dan button's rate: the BPM lock keeps it rounded up, now or when it's turned on later (LockedBpmFor).
+                // This holds until the rate is set some other way. A map loaded with the lock off keeps the rate, and
+                // with it this mark: the export osu! selects after Create Map is such a load.
+                danRate = result.Rate;
+                SetBpmMultiplier(result.Rate);
+            }
+            return result;
+        }
+
+        /// <summary>Stops a running dan button search (it then returns null).</summary>
+        public void CancelDanRateSearch()
+        {
+            danRateSearch?.Cancel();
+            danRateSearch = null;
+        }
+
+        // Where the search starts: the current rate, scaled by how far the rating on show is from the dan's threshold.
+        // Only a starting point, since the rating on show can lag behind the map; the search rates every step it uses.
+        private int GuessDanRateStep(DanLevel target)
+        {
+            double step = (double)BpmRate * 100;
+            var shown = ManiaRating;
+            if (shown?.Status == ManiaRatingStatus.Ok && shown.Rating > 0)
+                step *= Math.Pow(DanTable.RoundForDisplay(target.Threshold) / shown.Rating, 1 / DanRateFinder.TypicalExponent);
+            return (int)Math.Ceiling(Math.Max(0, Math.Min(10000, step)));
+        }
 #endregion
     }
 }
