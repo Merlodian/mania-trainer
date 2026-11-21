@@ -3,9 +3,12 @@ A version of [osu-trainer](https://github.com/FunOrange/osu-trainer) 1.8.0 (by F
 
 ![](osu-trainer/images/gui.png)
 
+![Dan Collections](osu-trainer/images/dan-collections.png)
+
 ### Additional Notes
 + Full LN doesn't change the dan rating (how much harder it makes a chart is disputed): a Full LN chart is rated, and the dan buttons set rates, as for the original chart. No LN is counted.
 + Maps can be created without alt tabbing with the dan buttons' hotkeys (Alt+Shift+A/S/D/F) and Create Map's (Ctrl+Shift+X)
++ **Dan Collections** (under "More") rates every 4K chart in your osu! Songs folder at 1.0x and writes osu! (stable) collections, one per dan: `xdc1 01 - 1st Dan` … `xdc1 20 - Kappa`, plus `xdc1 00 - Below 1st Dan` if you want it. "Split each dan into Low, Mid and High" divides each dan by thirds of the way to the next dan's threshold (the main window's progress bar): `xdc1 14.1 - Low Delta`, `xdc1 14.2 - Mid Delta`, `xdc1 14.3 - High Delta`; Kappa and Below 1st Dan stay whole. Close osu! before writing (osu! saves its collections over the file when it exits). Running it again replaces only the `xdc1 NN - …` and `xdc1 NN.T - …` collections; your other collections are kept and the old `collection.db` is copied to `collection.db.xdc1-backup-<time>`. Ratings are cached in `%LOCALAPPDATA%\mania-trainer`, so later scans only rate new or changed charts.
 + Search "maniatrainer" in osu! to find all your generated maps (they're tagged "osutrainer" too)
 + If you use this application a lot, you can end up using a lot of disk space. (333 mp3s * 3MB/mp3 = 1GB). To free up this space, delete the generated maps in osu, then click the Clean Up button in mania trainer.
 + `tools/calibrate_dans.py` rebuilds the dan thresholds from folders of Dan ~ REFORM ~ beatmaps (Theta, Iota and Kappa come from Dan ~ REFORM ~ FINAL (Ext.)).

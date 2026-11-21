@@ -83,6 +83,7 @@ namespace osu_trainer
             this.highQualityMp3Check = new osu_trainer.Controls.OsuCheckBox();
             this.NoSpinnersCheck = new osu_trainer.Controls.OsuCheckBox();
             this.button1 = new System.Windows.Forms.Button();
+            this.danCollectionsButton = new System.Windows.Forms.Button();
             this.middlePanel.SuspendLayout();
             this.Middle1Panel.SuspendLayout();
             this.tableLayoutPanel1.SuspendLayout();
@@ -863,6 +864,7 @@ namespace osu_trainer
             this.extrasPanel.Controls.Add(this.highQualityMp3Check);
             this.extrasPanel.Controls.Add(this.NoSpinnersCheck);
             this.extrasPanel.Controls.Add(this.button1);
+            this.extrasPanel.Controls.Add(this.danCollectionsButton);
             this.extrasPanel.Controls.Add(this.editHotkeysButton);
             this.extrasPanel.Dock = System.Windows.Forms.DockStyle.Top;
             this.extrasPanel.Location = new System.Drawing.Point(0, 395);
@@ -929,6 +931,21 @@ namespace osu_trainer
             this.button1.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
             this.button1.UseVisualStyleBackColor = true;
             this.button1.Click += new System.EventHandler(this.DeleteButton_Click);
+            //
+            // danCollectionsButton
+            //
+            this.danCollectionsButton.FlatAppearance.BorderSize = 0;
+            this.danCollectionsButton.FlatStyle = System.Windows.Forms.FlatStyle.Flat;
+            this.danCollectionsButton.Font = new System.Drawing.Font("Segoe UI", 9.75F, System.Drawing.FontStyle.Regular, System.Drawing.GraphicsUnit.Point, ((byte)(0)));
+            this.danCollectionsButton.ForeColor = System.Drawing.Color.FromArgb(((int)(((byte)(167)))), ((int)(((byte)(154)))), ((int)(((byte)(233)))));
+            this.danCollectionsButton.Location = new System.Drawing.Point(280, 68);
+            this.danCollectionsButton.Name = "danCollectionsButton";
+            this.danCollectionsButton.Size = new System.Drawing.Size(137, 23);
+            this.danCollectionsButton.TabIndex = 26;
+            this.danCollectionsButton.Text = "Dan Collections";
+            this.danCollectionsButton.TextAlign = System.Drawing.ContentAlignment.MiddleRight;
+            this.danCollectionsButton.UseVisualStyleBackColor = true;
+            this.danCollectionsButton.Click += new System.EventHandler(this.DanCollectionsButton_Click);
             // 
             // MainForm
             // 
@@ -1010,6 +1027,7 @@ namespace osu_trainer
         private OsuButton danButton4;
         private System.Windows.Forms.Button danMenuButton4;
         private System.Windows.Forms.Button editHotkeysButton;
+        private System.Windows.Forms.Button danCollectionsButton;
         public System.ComponentModel.BackgroundWorker BackgroundWorker;
         private System.Windows.Forms.Timer formAnimationTimer;
         private System.Windows.Forms.Button showExtrasButton;

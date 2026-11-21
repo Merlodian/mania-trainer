@@ -8,23 +8,29 @@ using System.Xml.Linq;
 namespace osu_trainer
 {
     /// <summary>
-    /// mania-trainer was called osu-trainer (the 1.8.0 mania build) before it was renamed. Windows keeps a program's
-    /// saved settings under its exe name and folder, so the renamed program starts with none of its own. On that
-    /// first run this copies them over from the old build: the dan buttons, hotkeys, songs folder, rate and toggles.
-    /// The old build's settings file is only read, never changed. Upstream osu-trainer's own settings are skipped:
-    /// only a file with the dan buttons setting (which upstream doesn't have) is taken.
+    /// Windows keeps a program's saved settings under its exe name, folder and version, so a renamed, moved or newer
+    /// mania trainer (mania-trainer.exe in mania-trainer-v1.0.0, then mania-trainer-v1.0.1.exe in
+    /// mania-trainer-v1.0.1, ...) starts with none of its own. On that first run this copies them over from the
+    /// newest earlier mania trainer, or failing that from the osu-trainer 1.8.0 mania build it was made from: the dan
+    /// buttons, hotkeys, songs folder, rate and toggles. The earlier settings file is only read, never changed.
+    /// Upstream osu-trainer's own settings are skipped: only a file with the dan buttons setting (which upstream
+    /// doesn't have) is taken.
     /// </summary>
     internal static class SettingsImport
     {
         private const string SectionName = "osu_trainer.Properties.Settings";
 
-        /// <summary>Where the old build's settings are: %LOCALAPPDATA%\osu_trainer\osu-trainer.exe_Url_...</summary>
-        internal static string OldSettingsRoot =>
-            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "osu_trainer");
+        private static string LocalAppData => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+        /// <summary>Where the osu-trainer mania build's settings are: %LOCALAPPDATA%\osu_trainer\osu-trainer.exe_Url_...</summary>
+        internal static string OldSettingsRoot => Path.Combine(LocalAppData, "osu_trainer");
+
+        /// <summary>Where every mania trainer's settings are: %LOCALAPPDATA%\mania_trainer\mania-trainer*.exe_Url_...</summary>
+        internal static string ManiaSettingsRoot => Path.Combine(LocalAppData, "mania_trainer");
 
         /// <summary>
-        /// Copies the old build's settings in when this program has no settings file of its own yet, then saves them
-        /// (so it happens once). Never throws: a failed import just leaves the defaults.
+        /// Copies earlier settings in when this program has no settings file of its own yet, then saves them (so it
+        /// happens once). Never throws: a failed import just leaves the defaults.
         /// </summary>
         public static void ImportOnFirstRun()
         {
@@ -33,7 +39,8 @@ namespace osu_trainer
                 string own = ConfigurationManager.OpenExeConfiguration(ConfigurationUserLevel.PerUserRoamingAndLocal).FilePath;
                 if (File.Exists(own))
                     return;
-                string previous = FindPreviousManiaSettings(OldSettingsRoot);
+                string previous = FindPreviousManiaSettings(ManiaSettingsRoot, "mania-trainer*.exe_Url_*")
+                               ?? FindPreviousManiaSettings(OldSettingsRoot);
                 if (previous != null && Import(previous, Properties.Settings.Default) > 0)
                     Properties.Settings.Default.Save();
             }
@@ -43,16 +50,16 @@ namespace osu_trainer
         }
 
         /// <summary>
-        /// The newest user.config under <paramref name="root"/>\osu-trainer.exe_Url_* that has the dan buttons
+        /// The newest user.config under <paramref name="root"/>\(<paramref name="folders"/>) that has the dan buttons
         /// setting, or null.
         /// </summary>
-        internal static string FindPreviousManiaSettings(string root)
+        internal static string FindPreviousManiaSettings(string root, string folders = "osu-trainer.exe_Url_*")
         {
             try
             {
                 if (!Directory.Exists(root))
                     return null;
-                return Directory.GetDirectories(root, "osu-trainer.exe_Url_*")
+                return Directory.GetDirectories(root, folders)
                     .SelectMany(d => Directory.GetFiles(d, "user.config", SearchOption.AllDirectories))
                     .Where(HasDanButtons)
                     .OrderByDescending(File.GetLastWriteTimeUtc)

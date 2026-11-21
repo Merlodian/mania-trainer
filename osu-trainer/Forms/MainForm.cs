@@ -76,7 +76,7 @@ namespace osu_trainer
                     string value = line.Split(':')[1].Trim();
                     if (attribute == "current version")
                     {
-                        this.Text = $"mania trainer {value}"; // set window title
+                        this.Text = $"mania trainer v{value}"; // set window title
                     }
                 }
             }
@@ -607,6 +607,13 @@ namespace osu_trainer
         {
             editor.ResetBeatmap();
             ClearDanStatuses(); // the rate and long note setting the dan buttons worked with are gone
+        }
+
+        // rates the whole Songs folder and writes osu! collections by dan; the window checks osu! is closed before writing
+        private void DanCollectionsButton_Click(object sender, EventArgs e)
+        {
+            using (var form = new DanCollectionsForm(userSongsFolder))
+                form.ShowDialog(this);
         }
 
         private void DeleteButton_Click(object sender, EventArgs e)

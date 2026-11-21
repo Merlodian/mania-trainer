@@ -33,7 +33,7 @@ namespace osu_trainer.Mania
 
     /// <summary>
     /// P/Invoke wrapper around xdc1.dll, TheBagelOfMan's 4K osu!mania difficulty algorithm (XDC1, MIT licence).
-    /// The DLL ships next to mania-trainer.exe; its C side is "Diff Calc/xdc1_dll.cpp".
+    /// The DLL ships next to the mania trainer exe; its C side is "Diff Calc/xdc1_dll.cpp".
     /// </summary>
     public static class Xdc1
     {
@@ -114,7 +114,7 @@ namespace osu_trainer.Mania
             }
             catch (DllNotFoundException)
             {
-                return "xdc1.dll was not found next to mania-trainer.exe";
+                return "xdc1.dll was not found next to the mania trainer exe";
             }
             catch (BadImageFormatException)
             {

@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>osu_trainer</RootNamespace>
-    <AssemblyName>mania-trainer</AssemblyName>
+    <AssemblyName>mania-trainer-v1.0.1</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -212,6 +212,9 @@
     <Compile Include="Controls\ToggleIconButton.cs">
       <SubType>Component</SubType>
     </Compile>
+    <Compile Include="Forms\DanCollectionsForm.cs">
+      <SubType>Form</SubType>
+    </Compile>
     <Compile Include="Forms\DeleteMp3sForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -240,7 +243,9 @@
     </Compile>
     <Compile Include="Icons.cs" />
     <Compile Include="JunUtils.cs" />
+    <Compile Include="Mania\DanCollectionScanner.cs" />
     <Compile Include="Mania\DanRateFinder.cs" />
+    <Compile Include="Mania\OsuCollections.cs" />
     <Compile Include="Mania\DanTable.cs" />
     <Compile Include="Mania\ManiaRating.cs" />
     <Compile Include="Mania\ManiaTransforms.cs" />
