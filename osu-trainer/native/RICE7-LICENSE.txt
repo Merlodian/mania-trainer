@@ -1,4 +1,4 @@
-xdc7.dll rates 7K osu!mania charts. It is built from xdc7.cpp, which is XDC1
+rice7.dll rates 7K osu!mania charts. It is built from rice7.cpp, which is XDC1
 (TheBagelOfMan's 4K osu!mania difficulty algorithm) widened to the three and
 four fingers a hand uses in 7K. It keeps XDC1's method and settings, and it
 rates rice only: a long note counts as a tap.

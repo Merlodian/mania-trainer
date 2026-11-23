@@ -1,4 +1,4 @@
-"""Shared pieces of the xdc7 (7K) tools: both engines through ctypes, .osu helpers that
+"""Shared pieces of the rice7 (7K) tools: both engines through ctypes, .osu helpers that
 rewrite columns, and the order statistics every tool reports.
 
 Nothing here knows where anything is installed; every path comes from the caller.
@@ -15,22 +15,22 @@ DANS7 = ["0th", "1st", "2nd", "3rd", "4th", "5th", "6th", "7th", "8th", "9th", "
 
 # ---------------------------------------------------------------------------- engines
 
-class Xdc7:
-    """xdc7.dll. rate() is safe to call from several threads (ctypes releases the GIL)."""
+class Rice7:
+    """rice7.dll. rate() is safe to call from several threads (ctypes releases the GIL)."""
 
     def __init__(self, path):
         self.dll = ctypes.CDLL(os.path.abspath(path))
-        self.dll.xdc7_param_count.restype = ctypes.c_int
-        self.dll.xdc7_param_name.argtypes = [ctypes.c_int]
-        self.dll.xdc7_param_name.restype = ctypes.c_char_p
-        self.dll.xdc7_param_default.argtypes = [ctypes.c_int]
-        self.dll.xdc7_param_default.restype = ctypes.c_double
-        n = self.dll.xdc7_param_count()
-        self.names = [self.dll.xdc7_param_name(i).decode() for i in range(n)]
-        self.defaults = [self.dll.xdc7_param_default(i) for i in range(n)]
-        self.dll.xdc7_param_neutral.argtypes = [ctypes.c_int]
-        self.dll.xdc7_param_neutral.restype = ctypes.c_double
-        self.neutral = [self.dll.xdc7_param_neutral(i) for i in range(n)]
+        self.dll.rice7_param_count.restype = ctypes.c_int
+        self.dll.rice7_param_name.argtypes = [ctypes.c_int]
+        self.dll.rice7_param_name.restype = ctypes.c_char_p
+        self.dll.rice7_param_default.argtypes = [ctypes.c_int]
+        self.dll.rice7_param_default.restype = ctypes.c_double
+        n = self.dll.rice7_param_count()
+        self.names = [self.dll.rice7_param_name(i).decode() for i in range(n)]
+        self.defaults = [self.dll.rice7_param_default(i) for i in range(n)]
+        self.dll.rice7_param_neutral.argtypes = [ctypes.c_int]
+        self.dll.rice7_param_neutral.restype = ctypes.c_double
+        self.neutral = [self.dll.rice7_param_neutral(i) for i in range(n)]
 
         class Result(ctypes.Structure):
             _fields_ = [("rating", ctypes.c_double), ("thumb_left", ctypes.c_double),
@@ -43,24 +43,24 @@ class Xdc7:
                         ("error", ctypes.c_char * 256)]
 
         self.Result = Result
-        self.dll.xdc7_analyse.argtypes = [ctypes.c_char_p, ctypes.c_longlong, ctypes.c_double,
+        self.dll.rice7_analyse.argtypes = [ctypes.c_char_p, ctypes.c_longlong, ctypes.c_double,
                                           ctypes.POINTER(ctypes.c_double), ctypes.c_int,
                                           ctypes.c_int, ctypes.c_int, ctypes.POINTER(Result)]
-        self.dll.xdc7_analyse.restype = ctypes.c_int
-        self.dll.xdc7_free_result.argtypes = [ctypes.POINTER(Result)]
-        self.dll.xdc7_free_result.restype = None
-        self.dll.xdc7_curve_count.restype = ctypes.c_int
-        self.dll.xdc7_curve_name.argtypes = [ctypes.c_int]
-        self.dll.xdc7_curve_name.restype = ctypes.c_char_p
-        self.curve_names = [self.dll.xdc7_curve_name(i).decode() for i in range(self.dll.xdc7_curve_count())]
-        self.dll.xdc7_curves.argtypes = [ctypes.c_char_p, ctypes.c_longlong, ctypes.c_double,
+        self.dll.rice7_analyse.restype = ctypes.c_int
+        self.dll.rice7_free_result.argtypes = [ctypes.POINTER(Result)]
+        self.dll.rice7_free_result.restype = None
+        self.dll.rice7_curve_count.restype = ctypes.c_int
+        self.dll.rice7_curve_name.argtypes = [ctypes.c_int]
+        self.dll.rice7_curve_name.restype = ctypes.c_char_p
+        self.curve_names = [self.dll.rice7_curve_name(i).decode() for i in range(self.dll.rice7_curve_count())]
+        self.dll.rice7_curves.argtypes = [ctypes.c_char_p, ctypes.c_longlong, ctypes.c_double,
                                          ctypes.POINTER(ctypes.c_double), ctypes.c_int, ctypes.c_int,
                                          ctypes.POINTER(ctypes.POINTER(ctypes.c_double)),
                                          ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_double),
                                          ctypes.c_char_p]
-        self.dll.xdc7_curves.restype = ctypes.c_int
-        self.dll.xdc7_free.argtypes = [ctypes.POINTER(ctypes.c_double)]
-        self.dll.xdc7_free.restype = None
+        self.dll.rice7_curves.restype = ctypes.c_int
+        self.dll.rice7_free.argtypes = [ctypes.POINTER(ctypes.c_double)]
+        self.dll.rice7_free.restype = None
 
     def curves(self, data, thumb, rate=1.0, params=None):
         """(rating, {curve name: numpy array}) for one thumb hold (1 left, 2 right):
@@ -71,7 +71,7 @@ class Xdc7:
         n = ctypes.c_int(0)
         rating = ctypes.c_double(0.0)
         err = ctypes.create_string_buffer(256)
-        rc = self.dll.xdc7_curves(data, len(data), rate, arr, len(params) if params is not None else 0,
+        rc = self.dll.rice7_curves(data, len(data), rate, arr, len(params) if params is not None else 0,
                                   thumb, ctypes.byref(out), ctypes.byref(n), ctypes.byref(rating), err)
         if rc != 0:
             raise RuntimeError(err.value.decode(errors="replace"))
@@ -79,7 +79,7 @@ class Xdc7:
             k = len(self.curve_names)
             a = np.ctypeslib.as_array(out, shape=(n.value * k,)).reshape(n.value, k).copy()
         finally:
-            self.dll.xdc7_free(out)
+            self.dll.rice7_free(out)
         return rating.value, {name: a[:, i] for i, name in enumerate(self.curve_names)}
 
     def params(self, base=None, **changes):
@@ -94,7 +94,7 @@ class Xdc7:
         arr = None
         if params is not None:
             arr = (ctypes.c_double * len(params))(*params)
-        rc = self.dll.xdc7_analyse(data, len(data), rate, arr, len(params) if params is not None else 0,
+        rc = self.dll.rice7_analyse(data, len(data), rate, arr, len(params) if params is not None else 0,
                                    thumb, 1 if graph else 0, ctypes.byref(r))
         try:
             if rc != 0:
@@ -107,7 +107,7 @@ class Xdc7:
                 out["graph"] = [r.graph[i] for i in range(r.n_points)]
             return out
         finally:
-            self.dll.xdc7_free_result(ctypes.byref(r))
+            self.dll.rice7_free_result(ctypes.byref(r))
 
 
 class Xdc1:

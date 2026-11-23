@@ -318,7 +318,7 @@ namespace osu_trainer.Controls
 
         // While counting, the animated value; once settled, the rating rounded exactly as DanSystem.Classify rounds
         // it (the float can be a hair off), so the number always agrees with the dan and the tooltip.
-        // A 7K chart with a good share of long notes says so: xdc7 rated them as taps.
+        // A 7K chart with a good share of long notes says so: rice7 rated them as taps.
         private string ManiaNumber(ManiaRating rating) =>
             (_maniaValue == _targetManiaValue
                 ? DanTable.FormatRating(rating.Rating)

@@ -1,5 +1,5 @@
 """Rate the charts of charts.tsv (see eval7.py) with sunnyxxy's Star-Rating-Rebirth, so that it
-can be scored beside xdc7 as a yardstick: eval7.py score --ratings sunny=sunny.tsv.
+can be scored beside rice7 as a yardstick: eval7.py score --ratings sunny=sunny.tsv.
 
 None of that project's code is here. Download it yourself (github.com/sunnyxxy/Star-Rating-Rebirth;
 it has no licence file, so it is not ours to copy or ship) and point --repo at the folder
@@ -15,7 +15,7 @@ usage:
                                  [--od 9] [--jobs N]
 
 --od rates every chart as if it had that OverallDifficulty (its hit leniency depends on the
-chart's OD; xdc7's does not). Left out, each chart's own OD is used, as the program does.
+chart's OD; rice7's does not). Left out, each chart's own OD is used, as the program does.
 """
 
 import argparse

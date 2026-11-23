@@ -160,7 +160,7 @@ namespace osu_trainer.Mania
         }
 
         /// <summary>
-        /// The latest note head or hold end in [HitObjects], read the way xdc1 (and xdc7) read the numbers. xdc1 then narrows
+        /// The latest note head or hold end in [HitObjects], read the way xdc1 (and rice7) read the numbers. xdc1 then narrows
         /// them to int, so a time outside the int range would wrap (a hold ending at -2,294,967,296 ms lands at
         /// +2,000,000,000 ms); such a time counts as later than any limit.
         /// </summary>

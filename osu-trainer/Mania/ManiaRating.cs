@@ -11,7 +11,7 @@ namespace osu_trainer.Mania
     {
         /// <summary>Rated: <see cref="ManiaRating.Rating"/> and <see cref="ManiaRating.Dan"/> are set.</summary>
         Ok,
-        /// <summary>A mania map with a key count no calculator here rates: anything but 4K (xdc1) and 7K (xdc7).</summary>
+        /// <summary>A mania map with a key count no calculator here rates: anything but 4K (xdc1) and 7K (rice7).</summary>
         UnsupportedKeys,
         /// <summary>The calculator could not rate the map (or its library is missing); see <see cref="ManiaRating.Error"/>.</summary>
         Failed,
@@ -24,7 +24,7 @@ namespace osu_trainer.Mania
         public int Keys { get; private set; }
 
         /// <summary>
-        /// The dan table the rating is read against (4K with xdc1, or 7K with xdc7); null for other key counts.
+        /// The dan table the rating is read against (4K with xdc1, or 7K with rice7); null for other key counts.
         /// <see cref="Dan"/> and <see cref="NextDan"/> are dans of this table.
         /// </summary>
         public DanSystem System { get; private set; }
@@ -39,15 +39,15 @@ namespace osu_trainer.Mania
         public string Error { get; private set; }
 
         /// <summary>
-        /// True for a 7K rating: xdc7 rates rice only, so every long note was counted as a tap on its head.
+        /// True for a 7K rating: rice7 rates rice only, so every long note was counted as a tap on its head.
         /// </summary>
         public bool RiceOnly { get; private set; }
 
         /// <summary>
         /// True when the rating is rice only and long notes are a good share of the chart
-        /// (<see cref="Xdc7.IsLongNoteHeavy"/>): the number then says little about the chart as it is played.
+        /// (<see cref="Rice7.IsLongNoteHeavy"/>): the number then says little about the chart as it is played.
         /// </summary>
-        public bool LongNoteHeavy => RiceOnly && Xdc7.IsLongNoteHeavy(Notes, Holds);
+        public bool LongNoteHeavy => RiceOnly && Rice7.IsLongNoteHeavy(Notes, Holds);
 
         /// <summary>7K: the rating with the middle key on the left thumb, and on the right. <see cref="Rating"/> is the lower.</summary>
         public double ThumbLeft { get; private set; }
@@ -70,8 +70,8 @@ namespace osu_trainer.Mania
             return rating;
         }
 
-        /// <summary>A 7K rating from xdc7.</summary>
-        public static ManiaRating Rated(Xdc7Result result)
+        /// <summary>A 7K rating from rice7.</summary>
+        public static ManiaRating Rated(Rice7Result result)
         {
             var rating = Rated(DanTable.SevenKey, result.Rating, result.Notes, result.Holds);
             rating.RiceOnly = true;
@@ -109,7 +109,7 @@ namespace osu_trainer.Mania
             switch (Status)
             {
                 case ManiaRatingStatus.UnsupportedKeys:
-                    return $"{Keys}K map: the dan rating only supports 4K (xdc1) and 7K (xdc7).";
+                    return $"{Keys}K map: the dan rating only supports 4K (xdc1) and 7K (rice7).";
                 case ManiaRatingStatus.Failed:
                     return $"Couldn't rate this map: {Error}";
             }
@@ -125,14 +125,14 @@ namespace osu_trainer.Mania
 
             if (RiceOnly)
             {
-                // xdc7 rates both ways to hold the middle key and keeps the easier one
+                // rice7 rates both ways to hold the middle key and keeps the easier one
                 sb.Append(string.Format(inv, "\nMiddle key on the left thumb {0}, on the right thumb {1}",
                     DanTable.FormatRating(ThumbLeft), DanTable.FormatRating(ThumbRight)));
                 if (Holds > 0)
                 {
                     sb.Append(LongNoteHeavy
-                        ? string.Format(inv, "\nRated as rice: {0:0}% of this chart is long notes, which xdc7 counts as taps.\nThe chart as it is played may be a good deal harder.", 100.0 * Holds / Math.Max(1, Notes))
-                        : "\nRated as rice: xdc7 counts a long note as a tap.");
+                        ? string.Format(inv, "\nRated as rice: {0:0}% of this chart is long notes, which rice7 counts as taps.\nThe chart as it is played may be a good deal harder.", 100.0 * Holds / Math.Max(1, Notes))
+                        : "\nRated as rice: rice7 counts a long note as a tap.");
                 }
             }
 
@@ -149,7 +149,7 @@ namespace osu_trainer.Mania
     public static class ManiaDifficulty
     {
         /// <summary>
-        /// osu!mania key count (CircleSize), rounded the way osu!, xdc1 and xdc7 read it. Never throws: a CircleSize
+        /// osu!mania key count (CircleSize), rounded the way osu!, xdc1 and rice7 read it. Never throws: a CircleSize
         /// too big for an int (a broken map; the window asks this on every state change) counts as -1.
         /// </summary>
         public static int KeyCount(Beatmap map)
@@ -163,20 +163,20 @@ namespace osu_trainer.Mania
         /// </summary>
         public static DanSystem SystemFor(Beatmap map) => map == null ? null : DanTable.ForKeys(KeyCount(map));
 
-        /// <summary>True when the calculator behind a dan table (xdc1.dll or xdc7.dll) can be used.</summary>
+        /// <summary>True when the calculator behind a dan table (xdc1.dll or rice7.dll) can be used.</summary>
         public static bool IsAvailable(DanSystem system) =>
             ReferenceEquals(system, DanTable.FourKey) ? Xdc1.IsAvailable
-            : ReferenceEquals(system, DanTable.SevenKey) && Xdc7.IsAvailable;
+            : ReferenceEquals(system, DanTable.SevenKey) && Rice7.IsAvailable;
 
         /// <summary>Why a table's calculator can't be used, or null when it can.</summary>
         public static string LoadError(DanSystem system) =>
             ReferenceEquals(system, DanTable.FourKey) ? Xdc1.LoadError
-            : ReferenceEquals(system, DanTable.SevenKey) ? Xdc7.LoadError
+            : ReferenceEquals(system, DanTable.SevenKey) ? Rice7.LoadError
             : "no calculator for this key count";
 
         /// <summary>
         /// Rates a snapshot of the edited beatmap (rate already applied) after the long note conversion: a 4K map
-        /// with xdc1, a 7K map with xdc7. xdc7 is rice only: it counts every long note as a tap, so there the
+        /// with xdc1, a 7K map with rice7. rice7 is rice only: it counts every long note as a tap, so there the
         /// conversion all but drops out (it takes the chart's end from the last tail too, which moved the 7K dan
         /// charts' ratings by 0.001 at most with No LN). Never throws; failures come back as
         /// <see cref="ManiaRatingStatus.Failed"/>.
@@ -196,7 +196,7 @@ namespace osu_trainer.Mania
                 string text = ManiaTransforms.Apply(Serialize(snapshot), conversion);
                 if (ReferenceEquals(system, DanTable.SevenKey))
                 {
-                    var result7 = Xdc7.Analyse(text);
+                    var result7 = Rice7.Analyse(text);
                     return result7.Ok ? ManiaRating.Rated(result7) : ManiaRating.Failed(result7.Error, keys);
                 }
                 var result = Xdc1.Analyse(text);

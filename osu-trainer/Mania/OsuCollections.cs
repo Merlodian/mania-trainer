@@ -45,17 +45,18 @@ namespace osu_trainer.Mania
         /// <summary>
         /// Names of the collections this program writes. 4K: "xdc1 00 - Below 1st Dan" ... "xdc1 20 - Kappa", and with
         /// the dans split in thirds "xdc1 14.1 - Low Delta", "xdc1 14.2 - Mid Delta", "xdc1 14.3 - High Delta".
-        /// 7K the same way with its own calculator's name and dans: "xdc7 00 - Below 0th Dan", "xdc7 01 - 0th Dan"
-        /// ... "xdc7 15 - Stellium", "xdc7 12.1 - Low Gamma".
+        /// 7K the same way with its own calculator's name and dans: "rice7 00 - Below 0th Dan", "rice7 01 - 0th Dan"
+        /// ... "rice7 15 - Stellium", "rice7 12.1 - Low Gamma". Version 1.0.2 called the 7K calculator xdc7 and wrote
+        /// "xdc7 NN - ..." collections; those still count as ours, so the next write replaces them.
         /// </summary>
-        private static readonly Regex ourCollection = new Regex(@"^xdc[17] \d\d(\.\d)? - ", RegexOptions.CultureInvariant);
+        private static readonly Regex ourCollection = new Regex(@"^(xdc1|rice7|xdc7) \d\d(\.\d)? - ", RegexOptions.CultureInvariant);
 
         public static readonly string[] TierNames = { "Low", "Mid", "High" };
 
         /// <summary>
         /// The collection name for a dan, or for below the table's lowest dan when <paramref name="dan"/> is null. The
         /// number (the dan's place in its table) keeps osu!'s alphabetical collection list in dan order, and the
-        /// calculator's name keeps the 4K collections ahead of the 7K ones.
+        /// calculator's name keeps the 4K and the 7K collections apart (7K first).
         /// </summary>
         public static string DanCollectionName(DanSystem system, DanLevel dan) =>
             dan == null

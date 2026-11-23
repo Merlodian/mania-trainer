@@ -109,7 +109,7 @@ namespace osu_trainer.Mania
         /// <summary>The key count this table is for: 4 or 7.</summary>
         public int Keys { get; }
 
-        /// <summary>"xdc1" (4K) or "xdc7" (7K): the calculator, as the window and the collection names call it.</summary>
+        /// <summary>"xdc1" (4K) or "rice7" (7K): the calculator, as the window and the collection names call it.</summary>
         public string Engine { get; }
 
         /// <summary>The dans, easiest first.</summary>
@@ -193,8 +193,8 @@ namespace osu_trainer.Mania
     /// course and sample map for that dan. Intro dans are not included. 246 charts were rated in total.
     /// Regenerate with tools/calibrate_dans.py; per-chart ratings are in tools/dan_calibration.csv.
     ///
-    /// 7K (xdc7, rice only): each threshold is where a smooth curve (a cubic in the dan number, least squares)
-    /// through the xdc7 ratings of the 60 charts of the 7K Regular Dan practice packs (0th to Stellium, one Jack,
+    /// 7K (rice7, rice only): each threshold is where a smooth curve (a cubic in the dan number, least squares)
+    /// through the rice7 ratings of the 60 charts of the 7K Regular Dan practice packs (0th to Stellium, one Jack,
     /// Speed, Stream and Tech chart for each dan) passes that dan. With four charts to a dan the plain means
     /// wobble, so the curve stands in for them. Regenerate with tools/calibrate_dans7.py, which writes the
     /// thresholds to tools/dan7_curve.json and the per-chart ratings to tools/dan7_calibration.csv.
@@ -230,7 +230,7 @@ namespace osu_trainer.Mania
             new DanSystem.Spec("Kappa",   "Kappa",   108.2573, Color.FromArgb(16, 16, 20),    "kappa",   true),
         });
 
-        public static readonly DanSystem SevenKey = new DanSystem(7, "xdc7", new[]
+        public static readonly DanSystem SevenKey = new DanSystem(7, "rice7", new[]
         {
             // 1st to 10th keep their 4K colours. 0th and the four dans after 10th are placeholders until the user
             // picks their own (Gamma borrows 4K Gamma's green and its icon; the other three have no icon yet).

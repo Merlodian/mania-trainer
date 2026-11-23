@@ -1,4 +1,4 @@
-"""Rate the 7K dan charts with xdc7.dll and score how well the ratings follow the dans.
+"""Rate the 7K dan charts with rice7.dll and score how well the ratings follow the dans.
 
 Every 7K .osu under the dan folders is read; its dan comes from the Version line
 ("~ 9th ~ ...", "- Gamma ~ ...") and its kind (Jack, Tech, Speed, Stream) from the folder
@@ -16,10 +16,10 @@ Scores, all on the ratings at rate 1.0:
   kind bias    each kind's average error, in dans: how far that kind rates high or low.
 
 usage:
-    python -I calibrate_dans7.py --dans "<7k Individual Maps>" [--dans ...] --dll xdc7.dll
+    python -I calibrate_dans7.py --dans "<7k Individual Maps>" [--dans ...] --dll rice7.dll
                                  [--set name=value ...] [--out <dir>]
 
---set changes a setting of the engine by name (see xdc7_param_name) for this run only.
+--set changes a setting of the engine by name (see rice7_param_name) for this run only.
 --out writes dan7_calibration.csv (one row per chart) and dan7_curve.json.
 """
 
@@ -32,7 +32,7 @@ import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import xdc7_lib as L  # noqa: E402
+import rice7_lib as L  # noqa: E402
 
 DAN_RE = re.compile(r"^\s*[-~]\s*(0th|1st|2nd|3rd|[4-9]th|10th|Gamma|Azimuth|Zenith|Stellium)\s*~", re.I)
 KINDS = ["Jack", "Speed", "Stream", "Tech"]
@@ -159,7 +159,7 @@ def main():
     ap.add_argument("--table", action="store_true", help="print every chart")
     args = ap.parse_args()
 
-    engine = L.Xdc7(args.dll)
+    engine = L.Rice7(args.dll)
     params = parse_sets(engine, args.set)
     charts, skipped = load_dan_charts([os.path.abspath(d) for d in args.dans])
     res = rate_all(engine, charts, params)

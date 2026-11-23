@@ -1,5 +1,5 @@
 {
-  "engine": "xdc7.dll",
+  "engine": "rice7.dll",
   "rate": 1.0,
   "settings": {
     "rep_ring": 1.0,

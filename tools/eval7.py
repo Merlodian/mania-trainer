@@ -1,10 +1,10 @@
-"""Score 7K rating sources (xdc7, another calculator, plain note density) on labelled charts.
+"""Score 7K rating sources (rice7, another calculator, plain note density) on labelled charts.
 
 Four steps, so that any calculator can be scored on exactly the same charts:
 
   list   collects the labelled charts and writes charts.tsv (one row per chart, with its
          label and its plain note density).
-  rate   rates every chart of charts.tsv with xdc7.dll and writes ratings.tsv
+  rate   rates every chart of charts.tsv with rice7.dll and writes ratings.tsv
          (path <tab> rating). Any other calculator only has to write the same two columns.
   score  prints, for every ratings file given and for two baselines that only count notes
          (notes per second, and the 90th percentile of notes in any one second):
@@ -24,9 +24,9 @@ Four steps, so that any calculator can be scored on exactly the same charts:
 
 usage:
     python -I eval7.py list  --out charts.tsv [--dans DIR ...] [--library SONGS] [--bms DIR]
-    python -I eval7.py rate  --dll xdc7.dll --charts charts.tsv --out xdc7.tsv
-    python -I eval7.py score --charts charts.tsv --ratings xdc7=xdc7.tsv [--ratings name=file ...]
-    python -I eval7.py resample --charts charts.tsv --ratings xdc7=xdc7.tsv [--ratings name=file ...]
+    python -I eval7.py rate  --dll rice7.dll --charts charts.tsv --out rice7.tsv
+    python -I eval7.py score --charts charts.tsv --ratings rice7=rice7.tsv [--ratings name=file ...]
+    python -I eval7.py resample --charts charts.tsv --ratings rice7=rice7.tsv [--ratings name=file ...]
 
 --dans     folders of dan charts, as for calibrate_dans7.py
 --library  an osu! Songs folder: charts from "7k Jack Maps in ..." sets (labelled "// reg5",
@@ -34,7 +34,7 @@ usage:
 --bms      a folder of 7K charts carrying BMS table levels in their Version line
 
 Only 7K charts with 200 notes or more and at most 5% long notes are used outside the dan
-folders (xdc7 reads a long note as a tap). Nothing here knows where anything is installed.
+folders (rice7 reads a long note as a tap). Nothing here knows where anything is installed.
 """
 
 import argparse
@@ -48,7 +48,7 @@ import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import xdc7_lib as L  # noqa: E402
+import rice7_lib as L  # noqa: E402
 import calibrate_dans7 as C  # noqa: E402
 
 MIN_NOTES = 200
@@ -268,7 +268,7 @@ def read_charts(path):
 # ---------------------------------------------------------------------------- rate
 
 def cmd_rate(args):
-    engine = L.Xdc7(args.dll)
+    engine = L.Rice7(args.dll)
     charts = read_charts(args.charts)
 
     def work(c):

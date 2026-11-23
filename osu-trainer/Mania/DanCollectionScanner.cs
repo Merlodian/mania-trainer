@@ -31,7 +31,7 @@ namespace osu_trainer.Mania
         /// <summary>Lower-case hex MD5 of the .osu file, which is how osu! collections refer to a beatmap.</summary>
         public string Md5 { get; }
 
-        /// <summary>xdc1's rating for a 4K chart, xdc7's (rice only) for a 7K one.</summary>
+        /// <summary>xdc1's rating for a 4K chart, rice7's (rice only) for a 7K one.</summary>
         public double Rating { get; }
 
         /// <summary>4 or 7: which dan table <see cref="Rating"/> is read against.</summary>
@@ -43,10 +43,10 @@ namespace osu_trainer.Mania
         public int Holds { get; }
 
         /// <summary>
-        /// True for a 7K chart with a good share of long notes (<see cref="Xdc7.IsLongNoteHeavy"/>): xdc7 rated them
+        /// True for a 7K chart with a good share of long notes (<see cref="Rice7.IsLongNoteHeavy"/>): rice7 rated them
         /// as taps, so the rating is too low by an unknown amount.
         /// </summary>
-        public bool LongNoteHeavy => Keys == 7 && Xdc7.IsLongNoteHeavy(Notes, Holds);
+        public bool LongNoteHeavy => Keys == 7 && Rice7.IsLongNoteHeavy(Notes, Holds);
     }
 
     public sealed class DanScanResult
@@ -69,10 +69,10 @@ namespace osu_trainer.Mania
 
     /// <summary>
     /// Finds every 4K and 7K osu!mania chart under a Songs folder and rates it at 1.0x, in parallel: 4K with xdc1,
-    /// 7K with xdc7 (when xdc7.dll is there; without it 7K charts are passed over).
+    /// 7K with rice7 (when rice7.dll is there; without it 7K charts are passed over).
     ///
     /// Results are cached in %LOCALAPPDATA%\mania-trainer\dan-collections-cache-3.tsv, keyed by path, modified time
-    /// and size, for the xdc1.dll and xdc7.dll they were made with, so a second scan only reads new or changed files.
+    /// and size, for the xdc1.dll and rice7.dll they were made with, so a second scan only reads new or changed files.
     /// (mania trainer 1.0.1 and earlier keep their 4K-only cache in dan-collections-cache.tsv, which is left alone.)
     /// A chart is the raw .osu file as osu! has it, the way the XDC1 Analyzer rates it.
     /// </summary>
@@ -133,7 +133,7 @@ namespace osu_trainer.Mania
             var result = new DanScanResult();
             if (!Xdc1.IsAvailable)
                 throw new InvalidOperationException(Xdc1.LoadError);
-            bool sevenKey = Xdc7.IsAvailable;
+            bool sevenKey = Rice7.IsAvailable;
 
             string fingerprint = DllFingerprint();
             phase = "Reading the cache…";
@@ -261,7 +261,7 @@ namespace osu_trainer.Mania
                 double rating;
                 if (keys == 7)
                 {
-                    var r = Xdc7.Analyse(text);
+                    var r = Rice7.Analyse(text);
                     if (!r.Ok)
                         return e;
                     (rating, e.Notes, e.Holds) = (r.Rating, r.Notes, r.Holds);
@@ -358,7 +358,7 @@ namespace osu_trainer.Mania
 
         /// <summary>
         /// The key count of an osu!mania chart from the start of its file (Mode 3 and CircleSize, rounded the way
-        /// osu!, xdc1 and xdc7 read it), or 0 when it isn't osu!mania or the header can't be read.
+        /// osu!, xdc1 and rice7 read it), or 0 when it isn't osu!mania or the header can't be read.
         /// </summary>
         public static int HeaderKeys(string head)
         {
@@ -383,7 +383,7 @@ namespace osu_trainer.Mania
         // ---- cache ----------------------------------------------------------------------------------------------
 
         // Both calculators' DLLs: a chart's rating belongs to the build that made it.
-        private static string DllFingerprint() => FileFingerprint("xdc1.dll") + "+" + FileFingerprint("xdc7.dll");
+        private static string DllFingerprint() => FileFingerprint("xdc1.dll") + "+" + FileFingerprint("rice7.dll");
 
         private static string FileFingerprint(string name)
         {

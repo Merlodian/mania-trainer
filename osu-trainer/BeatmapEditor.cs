@@ -522,7 +522,7 @@ namespace osu_trainer
                     completedDiffCalcRequest = request;
                     if (request.Snapshot.Mode == GameMode.Mania)
                     {
-                        // osu!mania: xdc1 (4K) or xdc7 (7K) rating -> dan (never throws)
+                        // osu!mania: xdc1 (4K) or rice7 (7K) rating -> dan (never throws)
                         (stars, aim, speed) = (0, 0, 0);
                         maniaRating = await Task.Run(() => ManiaDifficulty.Calculate(request.Snapshot, request.LnConversion));
                     }

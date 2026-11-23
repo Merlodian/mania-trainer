@@ -1,6 +1,6 @@
-"""Checks that xdc7 is xdc1 widened, not xdc1 changed, and that it behaves:
+"""Checks that rice7 is xdc1 widened, not xdc1 changed, and that it behaves:
 
-  4k        xdc7 on 4K charts gives xdc1's rice rating (same code path, two fingers a hand).
+  4k        rice7 on 4K charts gives xdc1's rice rating (same code path, two fingers a hand).
   embed     a 4K chart moved onto four of the seven columns (never the middle one) rates
             the same as the 4K chart, under either thumb: the three- and four-finger code
             with only two fingers in use is still xdc1.
@@ -8,14 +8,14 @@
   rates     the rating never falls as the rate rises. xdc1's own on 4K beside it.
 
 usage:
-    python -I xdc7_checks.py --dll7 xdc7.dll --dll1 xdc1.dll --k4 <folder or list.txt> --k7 <folder or list.txt>
+    python -I rice7_checks.py --dll7 rice7.dll --dll1 xdc1.dll --k4 <folder or list.txt> --k7 <folder or list.txt>
                              [--sample N] [--seed S] [--only 4k,embed,mirror,rates]
                              [--set name=value ...] [--published]
 
 --k4 / --k7 take a folder of .osu files or a text file with one path per line, and can
 be given more than once.
 
-The 4k and embed checks run at the neutral settings (xdc7_param_neutral), where xdc7 has to
+The 4k and embed checks run at the neutral settings (rice7_param_neutral), where rice7 has to
 be xdc1 exactly. --set changes settings on top of those, to show that a setting which only
 concerns a third or fourth finger leaves two fingers alone. --published runs those two
 checks at the published settings instead (they differ from xdc1 wherever a published
@@ -30,7 +30,7 @@ import statistics
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import xdc7_lib as L  # noqa: E402
+import rice7_lib as L  # noqa: E402
 
 EMBEDDINGS = [[1, 2, 4, 5], [0, 1, 5, 6], [0, 2, 4, 6], [0, 2, 5, 6], [1, 2, 4, 6]]
 RATES = [0.7, 0.8, 0.9, 1.0, 1.05, 1.1, 1.15, 1.2, 1.3, 1.4, 1.5]
@@ -91,7 +91,7 @@ def main():
     args = ap.parse_args()
     only = set(args.only.split(","))
     rng = random.Random(args.seed)
-    e7, e1 = L.Xdc7(args.dll7), L.Xdc1(args.dll1)
+    e7, e1 = L.Rice7(args.dll7), L.Xdc1(args.dll1)
     k4 = gather(args.k4, 4, args.sample, rng) if args.k4 else []
     k7 = gather(args.k7, 7, args.sample, rng) if args.k7 else []
     print(f"4K charts {len(k4)} ({sum(c['ln'] == 0 for c in k4)} without long notes), 7K charts {len(k7)}")
@@ -119,7 +119,7 @@ def main():
         return ok
 
     if "4k" in only and k4:
-        print("\n4k: xdc7 (two fingers a hand) against xdc1's rice rating")
+        print("\n4k: rice7 (two fingers a hand) against xdc1's rice rating")
         res = split(pmap(safe(lambda c: (c["ln"], e7.rate(c["data"], 1.0, neutral)["rating"] - e1.rate(c["data"])["rating_rice"])), k4))
         summary("charts without long notes", [d for ln, d in res if ln == 0])
         summary("charts with long notes   ", [d for ln, d in res if ln > 0])
@@ -148,8 +148,8 @@ def main():
                 # mirrored, the left-thumb hold is the right-thumb hold of the original.
                 return b["rating"] - a["rating"], b["thumb_left"] - a["thumb_right"], a["rating"]
             res = split(pmap(safe(work7), k7))
-            summary("xdc7, 7K, rating         ", [x for x, _, _ in res], tol=0.05)
-            summary("xdc7, 7K, one hold       ", [y for _, y, _ in res], tol=0.05)
+            summary("rice7, 7K, rating         ", [x for x, _, _ in res], tol=0.05)
+            summary("rice7, 7K, one hold       ", [y for _, y, _ in res], tol=0.05)
             rel = sorted(abs(x) / max(r, 1e-9) for x, _, r in res)
             print(f"    relative: median {100 * statistics.median(rel):.3f}%, 99th pct {100 * rel[int(0.99 * len(rel))]:.3f}%, max {100 * rel[-1]:.3f}%")
 
@@ -170,7 +170,7 @@ def main():
             report("xdc1, 4K (inherited)", res)
         if k7:
             res = split(pmap(safe(lambda c: drops([e7.rate(c["data"], r)["rating"] for r in RATES])), k7[:150]))
-            report("xdc7, 7K            ", res)
+            report("rice7, 7K            ", res)
     return 0
 
 

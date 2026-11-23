@@ -16,7 +16,7 @@ namespace osu_trainer
     /// <summary>
     /// Rates every 4K and 7K chart in the osu! Songs folder and writes osu! (stable) collections, one per dan:
     /// "xdc1 01 - 1st Dan" ... "xdc1 20 - Kappa", and "xdc1 00 - Below 1st Dan" if wanted; for 7K, if wanted,
-    /// "xdc7 01 - 0th Dan" ... "xdc7 15 - Stellium" and "xdc7 00 - Below 0th Dan".
+    /// "rice7 01 - 0th Dan" ... "rice7 15 - Stellium" and "rice7 00 - Below 0th Dan".
     /// </summary>
     public class DanCollectionsForm : Form
     {
@@ -49,7 +49,7 @@ namespace osu_trainer
         private string scannedOsuFolder;
 
         // What the long note check box's note says before the count of charts it leaves out (one line, 500 px).
-        private const string RiceNoteText = "xdc7 rates long notes as taps: these would rate too low.";
+        private const string RiceNoteText = "rice7 rates long notes as taps: these would rate too low.";
 
         public DanCollectionsForm(string songsFolderHint)
         {
@@ -137,7 +137,7 @@ namespace osu_trainer
             {
                 Location = new Point(12, 234),
                 Size = new Size(380, 24),
-                Text = "Also make 7K dan collections (xdc7: 0th Dan to Stellium)",
+                Text = "Also make 7K dan collections (rice7: 0th Dan to Stellium)",
                 TextOnRight = true,
                 Font = belowCheck.Font,
                 ForeColor = Colors.PaleBlue,
@@ -147,7 +147,7 @@ namespace osu_trainer
             {
                 Location = new Point(36, 262),
                 Size = new Size(380, 24),
-                Text = string.Format(CultureInfo.InvariantCulture, "Leave out 7K charts with more than {0:0}% long notes", 100 * Xdc7.LongNoteHeavyShare),
+                Text = string.Format(CultureInfo.InvariantCulture, "Leave out 7K charts with more than {0:0}% long notes", 100 * Rice7.LongNoteHeavyShare),
                 TextOnRight = true,
                 Font = belowCheck.Font,
                 ForeColor = Colors.PaleBlue,
@@ -391,7 +391,7 @@ namespace osu_trainer
                 : string.Format(inv, "{0}m {1:00}s", (int)result.Elapsed.TotalMinutes, result.Elapsed.Seconds);
             statusLabel.Text = string.Format(inv, "{0:N0} 4K and {1:N0} 7K charts rated in {2}.", fourKey, sevenKey, time)
                 + (result.Unrated > 0 ? string.Format(inv, " {0:N0} couldn't be rated and are left out.", result.Unrated) : "")
-                + (Xdc7.IsAvailable ? "" : " 7K charts were passed over: " + Xdc7.LoadError + ".");
+                + (Rice7.IsAvailable ? "" : " 7K charts were passed over: " + Rice7.LoadError + ".");
             ShowGroups();
         }
 
@@ -558,7 +558,7 @@ namespace osu_trainer
         public bool Below = true;
         public bool Split = false;
         public bool SevenKey = true;            // also make the 7K dan collections
-        public bool SkipLongNoteHeavy = true;   // ... without 7K charts that are mostly long notes to xdc7's eye
+        public bool SkipLongNoteHeavy = true;   // ... without 7K charts that are mostly long notes to rice7's eye
 
         private static string FilePath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mania-trainer", "dan-collections.txt");
