@@ -292,11 +292,11 @@ namespace osu_trainer.Controls
                         return new DanBadgeContent
                         {
                             Icon = TintedManiaIcon(muted),
-                            Name = "Below 1st",
+                            Name = rating.System.BelowLowestShort,
                             NameColor = muted,
                             Number = ManiaNumber(rating),
                             Progress = rating.Progress,
-                            ProgressColor = DanTable.Levels[0].TextColor,
+                            ProgressColor = rating.System.Levels[0].TextColor,
                         };
                     }
                     var color = Enabled ? dan.TextColor : muted;
@@ -309,19 +309,21 @@ namespace osu_trainer.Controls
                         Progress = rating.NextDan == null ? -1 : rating.Progress,
                         ProgressColor = (rating.NextDan ?? dan).TextColor,
                     };
-                case ManiaRatingStatus.NotFourKey:
-                    return new DanBadgeContent { Icon = TintedManiaIcon(muted), Name = $"{rating.Keys}K", NameColor = Colors.TextBoxFg, Number = "4K only", Progress = -1 };
+                case ManiaRatingStatus.UnsupportedKeys:
+                    return new DanBadgeContent { Icon = TintedManiaIcon(muted), Name = $"{rating.Keys}K", NameColor = Colors.TextBoxFg, Number = "4K and 7K only", Progress = -1 };
                 default:
                     return new DanBadgeContent { Icon = TintedManiaIcon(muted), Name = "No rating", NameColor = muted, Progress = -1 };
             }
         }
 
-        // While counting, the animated value; once settled, the rating rounded exactly as DanTable.Classify rounds
+        // While counting, the animated value; once settled, the rating rounded exactly as DanSystem.Classify rounds
         // it (the float can be a hair off), so the number always agrees with the dan and the tooltip.
+        // A 7K chart with a good share of long notes says so: xdc7 rated them as taps.
         private string ManiaNumber(ManiaRating rating) =>
-            _maniaValue == _targetManiaValue
+            (_maniaValue == _targetManiaValue
                 ? DanTable.FormatRating(rating.Rating)
-                : _maniaValue.ToString("0.00", CultureInfo.InvariantCulture);
+                : _maniaValue.ToString("0.00", CultureInfo.InvariantCulture))
+            + (rating.LongNoteHeavy ? " as rice" : "");
 
         private SizeF MeasureDanBadge(Graphics graphics) => MeasureDanBadge(graphics, GetDanBadgeContent(), out _, out _);
 

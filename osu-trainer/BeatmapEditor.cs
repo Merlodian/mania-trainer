@@ -522,7 +522,7 @@ namespace osu_trainer
                     completedDiffCalcRequest = request;
                     if (request.Snapshot.Mode == GameMode.Mania)
                     {
-                        // osu!mania: xdc1 rating -> dan (never throws)
+                        // osu!mania: xdc1 (4K) or xdc7 (7K) rating -> dan (never throws)
                         (stars, aim, speed) = (0, 0, 0);
                         maniaRating = await Task.Run(() => ManiaDifficulty.Calculate(request.Snapshot, request.LnConversion));
                     }
@@ -932,19 +932,22 @@ namespace osu_trainer
 
 #region Dan buttons
         /// <summary>
-        /// True when the dan buttons can be used: a 4K osu!mania map is loaded and nothing is being exported.
+        /// The dan table of the loaded map: 4K's for a 4K osu!mania map, 7K's for a 7K one, null for anything else.
         /// Decided from the map itself, not from the rating on show, which can still be the previous map's.
         /// </summary>
-        public bool CanSetRateForDan =>
-            State == EditorState.READY
-            && OriginalBeatmap?.Mode == GameMode.Mania
-            && ManiaDifficulty.KeyCount(OriginalBeatmap) == 4
-            && Xdc1.IsAvailable;
+        public DanSystem DanSystem => OriginalBeatmap?.Mode == GameMode.Mania ? ManiaDifficulty.SystemFor(OriginalBeatmap) : null;
+
+        /// <summary>
+        /// True when the dan buttons can be used: a 4K or 7K osu!mania map is loaded, its calculator is there and
+        /// nothing is being exported.
+        /// </summary>
+        public bool CanSetRateForDan => State == EditorState.READY && ManiaDifficulty.IsAvailable(DanSystem);
 
         /// <summary>
         /// A dan button: sets the rate to the lowest one, in 0.01x steps from 0.50x to 3.00x, at which the map (with the
         /// current long note setting) rates as <paramref name="target"/>, the way the window shows ratings. Leaves the
-        /// rate alone when no rate in that range does. Call on the UI thread; the ratings are worked out on the thread pool.
+        /// rate alone when no rate in that range does, and does nothing for a dan of another key mode than the map's.
+        /// Call on the UI thread; the ratings are worked out on the thread pool.
         /// </summary>
         /// <returns>
         /// What the search found; null when it no longer applies because, before it finished, it was cancelled
@@ -953,7 +956,7 @@ namespace osu_trainer
         /// </returns>
         public async Task<DanRateResult> SetRateForDan(DanLevel target)
         {
-            if (target == null || !CanSetRateForDan)
+            if (target == null || !CanSetRateForDan || !ReferenceEquals(target.System, DanSystem))
                 return null;
             var map = OriginalBeatmap;
             var conversion = RatingLnConversion;
@@ -1013,7 +1016,7 @@ namespace osu_trainer
         {
             double step = (double)BpmRate * 100;
             var shown = ManiaRating;
-            if (shown?.Status == ManiaRatingStatus.Ok && shown.Rating > 0)
+            if (shown?.Status == ManiaRatingStatus.Ok && shown.Rating > 0 && ReferenceEquals(shown.System, target.System))
                 step *= Math.Pow(DanTable.RoundForDisplay(target.Threshold) / shown.Rating, 1 / DanRateFinder.TypicalExponent);
             return (int)Math.Ceiling(Math.Max(0, Math.Min(10000, step)));
         }

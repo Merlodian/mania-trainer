@@ -41,7 +41,7 @@ namespace osu_trainer.Mania
     /// <summary>
     /// The search behind the dan buttons. It looks for the lowest rate, in 0.01x steps from 0.50x to 3.00x, at which
     /// the map rates as the dan or harder, while 0.01x less rates below it: the rate at which the rating crosses the
-    /// dan's threshold, which is the mean rating of that dan's charts.
+    /// dan's threshold (what the average chart of that dan rates; see <see cref="DanTable"/>).
     /// Ratings nearly always grow with the rate, so there is normally one such crossing. They can dip a little (with
     /// Full LN, a 4th dan chart rates 0.05 lower at 1.04x than at 1.03x); if a dip straddles the threshold, the search
     /// still returns a crossing, just not necessarily the lowest one.
@@ -56,17 +56,21 @@ namespace osu_trainer.Mania
         public static decimal MaxRate => MaxStep / 100M;
 
         /// <summary>
-        /// Ratings grow roughly as rate^0.92 across the dan charts (one 4th dan chart: 38.25 at 1.0x, 45.20 at 1.2x).
-        /// Only used to pick which rates to try first; every answer is checked by rating it.
+        /// Ratings grow roughly as rate^0.92 across the 4K dan charts (one 4th dan chart: 38.25 at 1.0x, 45.20 at 1.2x).
+        /// Only used to pick which rates to try first (for 7K too); every answer is checked by rating it.
         /// </summary>
         public const double TypicalExponent = 0.92;
 
         // After this many model-guided steps the search falls back to plain bisection, which always finishes.
         private const int GuidedSteps = 6;
 
-        /// <summary>True when the rating counts as <paramref name="target"/> or a harder dan (rounded the way the window shows it).</summary>
+        /// <summary>
+        /// True when the rating counts as <paramref name="target"/> or a harder dan of the same table (rounded the way
+        /// the window shows it). A rating from the other key mode's calculator never reaches it.
+        /// </summary>
         public static bool Reaches(ManiaRating rating, DanLevel target) =>
-            rating?.Status == ManiaRatingStatus.Ok && rating.Dan != null && rating.Dan.Index >= target.Index;
+            rating?.Status == ManiaRatingStatus.Ok && rating.Dan != null
+            && ReferenceEquals(rating.Dan.System, target.System) && rating.Dan.Index >= target.Index;
 
         /// <param name="ratingAt">The map's rating at a rate in hundredths.</param>
         /// <param name="target">The dan to reach.</param>
@@ -91,7 +95,9 @@ namespace osu_trainer.Mania
                 int step = Clamp(next, lo + 1, hi - 1);
                 var rating = ratingAt(step);
                 steps++;
-                if (rating == null || rating.Status != ManiaRatingStatus.Ok)
+                // a rating read against the other key mode's dans can't be compared with this dan at all
+                bool otherTable = rating?.Status == ManiaRatingStatus.Ok && !ReferenceEquals(rating.System, target.System);
+                if (rating == null || rating.Status != ManiaRatingStatus.Ok || otherTable)
                 {
                     return new DanRateResult
                     {
@@ -99,7 +105,9 @@ namespace osu_trainer.Mania
                         Target = target,
                         Rate = step / 100M,
                         Rating = rating,
-                        Error = rating?.Error ?? "no rating",
+                        Error = otherTable
+                            ? $"{target.DisplayName} is a {target.System.Keys}K dan and this is a {rating.Keys}K map"
+                            : rating?.Error ?? "no rating",
                         Steps = steps,
                     };
                 }
@@ -179,7 +187,7 @@ namespace osu_trainer.Mania
 
         /// <summary>
         /// The rating at a rate in hundredths, worked out the way the editor rates the map it shows (SetRate, then the
-        /// long note conversion and xdc1), so the window shows the same rating once the rate is set. Never throws.
+        /// long note conversion and the calculator), so the window shows the same rating once the rate is set. Never throws.
         /// </summary>
         public ManiaRating RatingAt(int step) => ratings.GetOrAdd(step, s =>
         {

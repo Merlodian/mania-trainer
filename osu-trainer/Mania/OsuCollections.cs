@@ -34,7 +34,8 @@ namespace osu_trainer.Mania
     /// a ULEB128 and the UTF-8 bytes. All integers are little-endian.
     ///
     /// The same format and rules are used by the XDC1 Analyzer ("Diff Calc/xdc1_gui.py"), so the two programs replace
-    /// each other's dan collections rather than adding a second set.
+    /// each other's 4K dan collections rather than adding a second set. (The Analyzer knows nothing of the 7K ones,
+    /// and keeps them like any other collection.)
     /// </summary>
     public static class OsuCollections
     {
@@ -42,36 +43,39 @@ namespace osu_trainer.Mania
         public const int FallbackVersion = 20150203;
 
         /// <summary>
-        /// Names of the collections this program writes: "xdc1 00 - Below 1st Dan" ... "xdc1 20 - Kappa", and with
+        /// Names of the collections this program writes. 4K: "xdc1 00 - Below 1st Dan" ... "xdc1 20 - Kappa", and with
         /// the dans split in thirds "xdc1 14.1 - Low Delta", "xdc1 14.2 - Mid Delta", "xdc1 14.3 - High Delta".
+        /// 7K the same way with its own calculator's name and dans: "xdc7 00 - Below 0th Dan", "xdc7 01 - 0th Dan"
+        /// ... "xdc7 15 - Stellium", "xdc7 12.1 - Low Gamma".
         /// </summary>
-        private static readonly Regex ourCollection = new Regex(@"^xdc1 \d\d(\.\d)? - ", RegexOptions.CultureInvariant);
+        private static readonly Regex ourCollection = new Regex(@"^xdc[17] \d\d(\.\d)? - ", RegexOptions.CultureInvariant);
 
         public static readonly string[] TierNames = { "Low", "Mid", "High" };
 
-        public const string BelowFirstDan = "Below 1st Dan";
-
         /// <summary>
-        /// The collection name for a dan, or for below 1st dan when <paramref name="dan"/> is null. The number keeps
-        /// osu!'s alphabetical collection list in dan order.
+        /// The collection name for a dan, or for below the table's lowest dan when <paramref name="dan"/> is null. The
+        /// number (the dan's place in its table) keeps osu!'s alphabetical collection list in dan order, and the
+        /// calculator's name keeps the 4K collections ahead of the 7K ones.
         /// </summary>
-        public static string DanCollectionName(DanLevel dan) =>
-            dan == null ? "xdc1 00 - " + BelowFirstDan : string.Format(CultureInfo.InvariantCulture, "xdc1 {0:00} - {1}", dan.Index + 1, dan.DisplayName);
+        public static string DanCollectionName(DanSystem system, DanLevel dan) =>
+            dan == null
+                ? system.Engine + " 00 - " + system.BelowLowest
+                : string.Format(CultureInfo.InvariantCulture, "{0} {1:00} - {2}", system.Engine, dan.Index + 1, dan.DisplayName);
 
         /// <summary>
         /// The collection name for a third of a dan (tier 0 Low, 1 Mid, 2 High): "xdc1 14.2 - Mid Delta". The number
         /// keeps the thirds in order in osu!'s alphabetical list.
         /// </summary>
         public static string DanTierCollectionName(DanLevel dan, int tier) =>
-            string.Format(CultureInfo.InvariantCulture, "xdc1 {0:00}.{1} - {2} {3}", dan.Index + 1, tier + 1, TierNames[tier], dan.DisplayName);
+            string.Format(CultureInfo.InvariantCulture, "{0} {1:00}.{2} - {3} {4}", dan.System.Engine, dan.Index + 1, tier + 1, TierNames[tier], dan.DisplayName);
 
         /// <summary>
         /// Which third of its dan a rating is in: 0 for the first third of the way to the next dan's threshold, 1 for
         /// the second and 2 for the last. Measured like the progress bar in the main window.
         /// </summary>
-        public static int Tier(double rating)
+        public static int Tier(DanSystem system, double rating)
         {
-            float progress = DanTable.ProgressToNext(rating);
+            float progress = system.ProgressToNext(rating);
             return progress < 1f / 3 ? 0 : progress < 2f / 3 ? 1 : 2;
         }
 

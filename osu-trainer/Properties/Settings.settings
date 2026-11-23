@@ -17,6 +17,9 @@
     <Setting Name="DanButtons" Type="System.String" Scope="User">
       <Value Profile="(Default)">Alpha,Beta,Gamma,Delta</Value>
     </Setting>
+    <Setting Name="DanButtons7K" Type="System.String" Scope="User">
+      <Value Profile="(Default)">Gamma,Azimuth,Zenith,Stellium</Value>
+    </Setting>
     <Setting Name="ChangePitch" Type="System.Boolean" Scope="User">
       <Value Profile="(Default)">False</Value>
     </Setting>

@@ -8,7 +8,7 @@
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>osu_trainer</RootNamespace>
-    <AssemblyName>mania-trainer-v1.0.1</AssemblyName>
+    <AssemblyName>mania-trainer-v1.0.2</AssemblyName>
     <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
@@ -250,6 +250,7 @@
     <Compile Include="Mania\ManiaRating.cs" />
     <Compile Include="Mania\ManiaTransforms.cs" />
     <Compile Include="Mania\Xdc1.cs" />
+    <Compile Include="Mania\Xdc7.cs" />
     <Compile Include="Forms\MainForm.cs">
       <SubType>Form</SubType>
     </Compile>
@@ -304,6 +305,14 @@
     </Content>
     <Content Include="native\XDC1-LICENSE.txt">
       <Link>XDC1-LICENSE.txt</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="native\xdc7.dll">
+      <Link>xdc7.dll</Link>
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="native\XDC7-LICENSE.txt">
+      <Link>XDC7-LICENSE.txt</Link>
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
     <Content Include="version.txt">

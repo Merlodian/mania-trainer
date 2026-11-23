@@ -13,14 +13,17 @@ using System.Threading.Tasks;
 
 namespace osu_trainer.Mania
 {
-    /// <summary>A 4K chart found by <see cref="DanCollectionScanner"/>, rated at 1.0x.</summary>
+    /// <summary>A 4K or 7K chart found by <see cref="DanCollectionScanner"/>, rated at 1.0x.</summary>
     public sealed class RatedChart
     {
-        public RatedChart(string path, string md5, double rating)
+        public RatedChart(string path, string md5, double rating, int keys, int notes, int holds)
         {
             Path = path;
             Md5 = md5;
             Rating = rating;
+            Keys = keys;
+            Notes = notes;
+            Holds = holds;
         }
 
         public string Path { get; }
@@ -28,14 +31,29 @@ namespace osu_trainer.Mania
         /// <summary>Lower-case hex MD5 of the .osu file, which is how osu! collections refer to a beatmap.</summary>
         public string Md5 { get; }
 
+        /// <summary>xdc1's rating for a 4K chart, xdc7's (rice only) for a 7K one.</summary>
         public double Rating { get; }
+
+        /// <summary>4 or 7: which dan table <see cref="Rating"/> is read against.</summary>
+        public int Keys { get; }
+
+        public int Notes { get; }
+
+        /// <summary>How many of the notes are long notes.</summary>
+        public int Holds { get; }
+
+        /// <summary>
+        /// True for a 7K chart with a good share of long notes (<see cref="Xdc7.IsLongNoteHeavy"/>): xdc7 rated them
+        /// as taps, so the rating is too low by an unknown amount.
+        /// </summary>
+        public bool LongNoteHeavy => Keys == 7 && Xdc7.IsLongNoteHeavy(Notes, Holds);
     }
 
     public sealed class DanScanResult
     {
         public List<RatedChart> Charts { get; } = new List<RatedChart>();
 
-        /// <summary>4K charts xdc1 couldn't rate.</summary>
+        /// <summary>4K and 7K charts their calculator couldn't rate.</summary>
         public int Unrated { get; set; }
 
         /// <summary>.osu files found, of any mode.</summary>
@@ -50,24 +68,32 @@ namespace osu_trainer.Mania
     }
 
     /// <summary>
-    /// Finds every 4K osu!mania chart under a Songs folder and rates it with xdc1 at 1.0x, in parallel.
+    /// Finds every 4K and 7K osu!mania chart under a Songs folder and rates it at 1.0x, in parallel: 4K with xdc1,
+    /// 7K with xdc7 (when xdc7.dll is there; without it 7K charts are passed over).
     ///
-    /// Results are cached in %LOCALAPPDATA%\mania-trainer\dan-collections-cache.tsv, keyed by path, modified time and
-    /// size, for the xdc1.dll they were made with, so a second scan only reads new or changed files.
+    /// Results are cached in %LOCALAPPDATA%\mania-trainer\dan-collections-cache-3.tsv, keyed by path, modified time
+    /// and size, for the xdc1.dll and xdc7.dll they were made with, so a second scan only reads new or changed files.
+    /// (mania trainer 1.0.1 and earlier keep their 4K-only cache in dan-collections-cache.tsv, which is left alone.)
     /// A chart is the raw .osu file as osu! has it, the way the XDC1 Analyzer rates it.
     /// </summary>
     public sealed class DanCollectionScanner
     {
         private const string CacheMagic = "mania-trainer dan cache";
-        private const int CacheFormat = 2; // 2: charts past 260 characters are read (1 cached them as skipped)
+        // 2: charts past 260 characters are read (1 cached them as skipped)
+        // 3: 7K charts are rated too; each chart has its key count, notes and long notes
+        private const int CacheFormat = 3;
 
         private readonly string songsFolder;
+        private readonly string cachePath;
         private int found, done, total;
         private volatile string phase = "Starting…";
 
-        public DanCollectionScanner(string songsFolder)
+        /// <param name="songsFolder">The folder to walk.</param>
+        /// <param name="cachePath">Where to keep the cache; <see cref="CachePath"/> when null.</param>
+        public DanCollectionScanner(string songsFolder, string cachePath = null)
         {
             this.songsFolder = songsFolder;
+            this.cachePath = cachePath ?? CachePath;
         }
 
         /// <summary>What the scan is doing, for the window to show (read from any thread).</summary>
@@ -77,7 +103,7 @@ namespace osu_trainer.Mania
         public int Total => Volatile.Read(ref total);
 
         public static string CachePath => Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mania-trainer", "dan-collections-cache.tsv");
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mania-trainer", "dan-collections-cache-3.tsv");
 
         private enum Kind { Chart, Skip, Failed }
 
@@ -88,6 +114,9 @@ namespace osu_trainer.Mania
             public Kind Kind;
             public string Md5;
             public double Rating;
+            public int Keys;
+            public int Notes;
+            public int Holds;
         }
 
         private struct FileItem
@@ -104,6 +133,7 @@ namespace osu_trainer.Mania
             var result = new DanScanResult();
             if (!Xdc1.IsAvailable)
                 throw new InvalidOperationException(Xdc1.LoadError);
+            bool sevenKey = Xdc7.IsAvailable;
 
             string fingerprint = DllFingerprint();
             phase = "Reading the cache…";
@@ -137,7 +167,7 @@ namespace osu_trainer.Mania
                             state.Stop();
                             return;
                         }
-                        entries[f.Path] = Analyse(f);
+                        entries[f.Path] = Analyse(f, sevenKey);
                         Interlocked.Increment(ref done);
                     });
                 }
@@ -161,7 +191,7 @@ namespace osu_trainer.Mania
                 if (!entries.TryGetValue(f.Path, out Entry e))
                     continue;
                 if (e.Kind == Kind.Chart)
-                    result.Charts.Add(new RatedChart(f.Path, e.Md5, e.Rating));
+                    result.Charts.Add(new RatedChart(f.Path, e.Md5, e.Rating, e.Keys, e.Notes, e.Holds));
                 else if (e.Kind == Kind.Failed)
                     result.Unrated++;
             }
@@ -205,50 +235,68 @@ namespace osu_trainer.Mania
             return files;
         }
 
-        private static Entry Analyse(FileItem f)
+        private static Entry Analyse(FileItem f, bool sevenKey)
         {
             var e = new Entry { Ticks = f.Ticks, Size = f.Size, Kind = Kind.Skip };
             byte[] data;
+            int keys;
             try
             {
-                data = ReadIf4K(f.Path);
+                data = ReadIfRated(f.Path, sevenKey, out keys);
             }
             catch (Exception)
             {
-                return e; // unreadable: not counted, like any other file that isn't a 4K chart
+                return e; // unreadable: not counted, like any other file that isn't a 4K or 7K chart
             }
             if (data == null)
                 return e;
 
+            e.Keys = keys;
             using (var md5 = MD5.Create())
                 e.Md5 = string.Concat(md5.ComputeHash(data).Select(b => b.ToString("x2")));
+            e.Kind = Kind.Failed;
             try
             {
-                var r = Xdc1.Analyse(Encoding.UTF8.GetString(data));
-                if (r.Ok && !double.IsNaN(r.Rating) && !double.IsInfinity(r.Rating))
+                string text = Encoding.UTF8.GetString(data);
+                double rating;
+                if (keys == 7)
                 {
-                    e.Kind = Kind.Chart;
-                    e.Rating = r.Rating;
+                    var r = Xdc7.Analyse(text);
+                    if (!r.Ok)
+                        return e;
+                    (rating, e.Notes, e.Holds) = (r.Rating, r.Notes, r.Holds);
                 }
                 else
-                    e.Kind = Kind.Failed;
+                {
+                    var r = Xdc1.Analyse(text);
+                    if (!r.Ok)
+                        return e;
+                    (rating, e.Notes, e.Holds) = (r.Rating, r.Notes, r.Holds);
+                }
+                if (!double.IsNaN(rating) && !double.IsInfinity(rating))
+                {
+                    e.Kind = Kind.Chart;
+                    e.Rating = rating;
+                }
             }
             catch (Exception)
             {
-                e.Kind = Kind.Failed;
             }
             return e;
         }
 
-        // ---- telling 4K mania apart (the same test as the XDC1 Analyzer) -------------------------------------
+        // ---- telling 4K and 7K mania apart from everything else (4K: the same test as the XDC1 Analyzer) -------
 
         private const int HeadBytes = 16384;
         private static readonly Regex modeRe = new Regex(@"^[ \t]*Mode[ \t]*:[ \t]*(\d+)", RegexOptions.Multiline | RegexOptions.CultureInvariant);
         private static readonly Regex csRe = new Regex(@"^[ \t]*CircleSize[ \t]*:[ \t]*([-+0-9.]+)", RegexOptions.Multiline | RegexOptions.CultureInvariant);
         private static readonly Regex bodyRe = new Regex(@"^[ \t]*\[(?:Events|TimingPoints|HitObjects)\]", RegexOptions.Multiline | RegexOptions.CultureInvariant);
 
-        /// <summary>The file's bytes when it's a 4K osu!mania chart, else null. Reads only the header of anything else.</summary>
-        public static byte[] ReadIf4K(string path)
+        /// <summary>
+        /// The file's bytes when it's a 4K osu!mania chart, or a 7K one and <paramref name="sevenKey"/> is true, else
+        /// null. Reads only the header of anything else. <paramref name="keys"/> is 4 or 7 for a chart, else 0.
+        /// </summary>
+        public static byte[] ReadIfRated(string path, bool sevenKey, out int keys)
         {
             using (var f = OpenRead(path))
             {
@@ -267,8 +315,12 @@ namespace osu_trainer.Mania
                     full = true;
                     text = Latin1.GetString(ms.GetBuffer(), 0, (int)ms.Length);
                 }
-                if (!HeaderIs4K(text))
+                keys = HeaderKeys(text);
+                if (keys != 4 && !(keys == 7 && sevenKey))
+                {
+                    keys = 0;
                     return null;
+                }
                 if (!full)
                     f.CopyTo(ms);
                 return ms.ToArray();
@@ -304,7 +356,11 @@ namespace osu_trainer.Mania
             return path.StartsWith(@"\\", StringComparison.Ordinal) ? @"\\?\UNC\" + path.Substring(2) : @"\\?\" + path;
         }
 
-        public static bool HeaderIs4K(string head)
+        /// <summary>
+        /// The key count of an osu!mania chart from the start of its file (Mode 3 and CircleSize, rounded the way
+        /// osu!, xdc1 and xdc7 read it), or 0 when it isn't osu!mania or the header can't be read.
+        /// </summary>
+        public static int HeaderKeys(string head)
         {
             var body = bodyRe.Match(head);
             if (body.Success)
@@ -312,19 +368,26 @@ namespace osu_trainer.Mania
             var mode = modeRe.Match(head);
             var cs = csRe.Match(head);
             if (!mode.Success || !cs.Success)
-                return false;
+                return 0;
             if (!long.TryParse(mode.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out long m) || m != 3)
-                return false;
+                return 0;
             if (!double.TryParse(cs.Groups[1].Value, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double keys))
-                return false;
-            return Math.Floor(keys + 0.5) == 4;
+                return 0;
+            double rounded = Math.Floor(keys + 0.5);
+            return rounded >= 1 && rounded <= 1000 ? (int)rounded : 0;
         }
+
+        /// <summary>True for the header of a 4K osu!mania chart.</summary>
+        public static bool HeaderIs4K(string head) => HeaderKeys(head) == 4;
 
         // ---- cache ----------------------------------------------------------------------------------------------
 
-        private static string DllFingerprint()
+        // Both calculators' DLLs: a chart's rating belongs to the build that made it.
+        private static string DllFingerprint() => FileFingerprint("xdc1.dll") + "+" + FileFingerprint("xdc7.dll");
+
+        private static string FileFingerprint(string name)
         {
-            string dll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "xdc1.dll");
+            string dll = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, name);
             try
             {
                 using (var md5 = MD5.Create())
@@ -337,29 +400,33 @@ namespace osu_trainer.Mania
             }
         }
 
-        private static Dictionary<string, Entry> LoadCache(string fingerprint)
+        private Dictionary<string, Entry> LoadCache(string fingerprint)
         {
             var cache = new Dictionary<string, Entry>(StringComparer.OrdinalIgnoreCase);
             try
             {
-                using (var reader = new StreamReader(CachePath, Encoding.UTF8))
+                using (var reader = new StreamReader(cachePath, Encoding.UTF8))
                 {
                     string header = reader.ReadLine();
                     if (header != $"{CacheMagic}\t{CacheFormat}\t{fingerprint}")
-                        return cache; // another format or another xdc1.dll: rate everything again
+                        return cache; // another format or other DLLs: rate everything again
                     string line;
                     while ((line = reader.ReadLine()) != null)
                     {
                         var p = line.Split('\t');
-                        if (p.Length != 6
+                        if (p.Length != 9
                             || !long.TryParse(p[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long ticks)
-                            || !long.TryParse(p[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long size))
+                            || !long.TryParse(p[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out long size)
+                            || !int.TryParse(p[6], NumberStyles.Integer, CultureInfo.InvariantCulture, out int keys)
+                            || !int.TryParse(p[7], NumberStyles.Integer, CultureInfo.InvariantCulture, out int notes)
+                            || !int.TryParse(p[8], NumberStyles.Integer, CultureInfo.InvariantCulture, out int holds))
                             continue;
-                        var e = new Entry { Ticks = ticks, Size = size, Md5 = p[4].Length == 0 ? null : p[4] };
+                        var e = new Entry { Ticks = ticks, Size = size, Md5 = p[4].Length == 0 ? null : p[4], Keys = keys, Notes = notes, Holds = holds };
                         switch (p[3])
                         {
                             case "c":
-                                if (!double.TryParse(p[5], NumberStyles.Float, CultureInfo.InvariantCulture, out e.Rating))
+                                if (!double.TryParse(p[5], NumberStyles.Float, CultureInfo.InvariantCulture, out e.Rating)
+                                    || DanTable.ForKeys(keys) == null)
                                     continue;
                                 e.Kind = Kind.Chart;
                                 break;
@@ -383,32 +450,39 @@ namespace osu_trainer.Mania
             return cache;
         }
 
-        private static void SaveCache(string fingerprint, IDictionary<string, Entry> entries)
+        private void SaveCache(string fingerprint, IDictionary<string, Entry> entries)
         {
-            string path = CachePath;
+            string path = cachePath;
             string temp = path + ".tmp";
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(path));
                 using (var w = new StreamWriter(temp, false, new UTF8Encoding(false)))
                 {
+                    var inv = CultureInfo.InvariantCulture;
                     w.WriteLine($"{CacheMagic}\t{CacheFormat}\t{fingerprint}");
                     foreach (var kv in entries)
                     {
                         var e = kv.Value;
                         string kind = e.Kind == Kind.Chart ? "c" : e.Kind == Kind.Failed ? "f" : "s";
-                        string rating = e.Kind == Kind.Chart ? e.Rating.ToString("R", CultureInfo.InvariantCulture) : "";
+                        string rating = e.Kind == Kind.Chart ? e.Rating.ToString("R", inv) : "";
                         w.Write(kv.Key);
                         w.Write('\t');
-                        w.Write(e.Ticks.ToString(CultureInfo.InvariantCulture));
+                        w.Write(e.Ticks.ToString(inv));
                         w.Write('\t');
-                        w.Write(e.Size.ToString(CultureInfo.InvariantCulture));
+                        w.Write(e.Size.ToString(inv));
                         w.Write('\t');
                         w.Write(kind);
                         w.Write('\t');
                         w.Write(e.Md5 ?? "");
                         w.Write('\t');
-                        w.WriteLine(rating);
+                        w.Write(rating);
+                        w.Write('\t');
+                        w.Write(e.Keys.ToString(inv));
+                        w.Write('\t');
+                        w.Write(e.Notes.ToString(inv));
+                        w.Write('\t');
+                        w.WriteLine(e.Holds.ToString(inv));
                     }
                 }
                 if (File.Exists(path))

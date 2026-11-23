@@ -85,6 +85,18 @@ namespace osu_trainer.Properties {
         
         [global::System.Configuration.UserScopedSettingAttribute()]
         [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("Gamma,Azimuth,Zenith,Stellium")]
+        public string DanButtons7K {
+            get {
+                return ((string)(this["DanButtons7K"]));
+            }
+            set {
+                this["DanButtons7K"] = value;
+            }
+        }
+        
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
         [global::System.Configuration.DefaultSettingValueAttribute("False")]
         public bool ChangePitch {
             get {

@@ -104,8 +104,10 @@ namespace osu_trainer
             // dan buttons
             danButtons = new[] { danButton1, danButton2, danButton3, danButton4 };
             danMenuButtons = new[] { danMenuButton1, danMenuButton2, danMenuButton3, danMenuButton4 };
-            danTargets = ParseDanButtons(Properties.Settings.Default.DanButtons);
-            danMenu = BuildDanMenu();
+            danTargetsBySystem[DanTable.FourKey] = ParseDanButtons(Properties.Settings.Default.DanButtons, DanTable.FourKey);
+            danTargetsBySystem[DanTable.SevenKey] = ParseDanButtons(Properties.Settings.Default.DanButtons7K, DanTable.SevenKey);
+            foreach (var system in DanTable.Systems)
+                danMenus[system] = BuildDanMenu(system);
             danButtonToolTip = new ToolTip(components) { AutoPopDelay = 10000, InitialDelay = 500, ReshowDelay = 200 };
 
             ApplyFonts();
@@ -490,7 +492,8 @@ namespace osu_trainer
             SongDisplay.ManiaRating = mania;
             SongDisplay.Stars = (float)editor.StarRating;
             string tip = mania?.Describe();
-            if (tip != null && mania.Status == ManiaRatingStatus.Ok && editor.LnConversion == LnConversion.FullLn)
+            // (a 7K rating counts no long notes at all, and its own tooltip says so)
+            if (tip != null && mania.Status == ManiaRatingStatus.Ok && !mania.RiceOnly && editor.LnConversion == LnConversion.FullLn)
                 tip += "\nFull LN isn't counted: rated as the original chart";
             danToolTip.SetToolTip(SongDisplay, tip);
         }
@@ -852,7 +855,7 @@ namespace osu_trainer
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
             editor.SaveSettings();
-            Properties.Settings.Default.DanButtons = FormatDanButtons(danTargets);
+            SaveDanButtons();
             // save hotkeys
             Properties.Settings.Default.HotkeyCreateMap = Hotkeys[0];
             Properties.Settings.Default.HotkeyProfile1 = Hotkeys[1];
@@ -864,8 +867,11 @@ namespace osu_trainer
 
 #region Dan buttons
         // Four buttons that set the rate to where the map reaches a dan (BeatmapEditor.SetRateForDan), each with a
-        // "Change dan" menu under it. Their dans are the DanButtons setting; Alt+Shift+(hotkey) presses one.
+        // "Change dan" menu under it. Alt+Shift+(hotkey) presses one. 4K and 7K have their own dans, so the buttons
+        // have four dans for each: the DanButtons setting (4K) and the DanButtons7K setting, and they show the ones
+        // of the loaded map's key mode.
         private static readonly string[] DefaultDanButtons = { "Alpha", "Beta", "Gamma", "Delta" };
+        private static readonly string[] DefaultDanButtons7K = { "Gamma", "Azimuth", "Zenith", "Stellium" };
         private const string DanMenuButtonText = "Change dan ▼";
         private static readonly Color DanMenuButtonColor = Color.FromArgb(90, 90, 134);
         private static readonly TimeSpan DanStatusHold = TimeSpan.FromSeconds(1.6);
@@ -873,8 +879,13 @@ namespace osu_trainer
 
         private OsuButton[] danButtons;
         private Button[] danMenuButtons;
-        private DanLevel[] danTargets;
-        private ContextMenuStrip danMenu;
+        private readonly Dictionary<DanSystem, DanLevel[]> danTargetsBySystem = new Dictionary<DanSystem, DanLevel[]>();
+        private readonly Dictionary<DanSystem, ContextMenuStrip> danMenus = new Dictionary<DanSystem, ContextMenuStrip>();
+        // The dan table on show: the loaded map's, or, for a map with no dans (not mania, or another key count), the
+        // one shown last. 4K to begin with.
+        private DanSystem danSystem = DanTable.FourKey;
+        private DanLevel[] danTargets => danTargetsBySystem[danSystem];
+        private ContextMenuStrip danMenu => danMenus[danSystem];
         private int danMenuSlot; // the button the menu was opened for
         private readonly ToolTip danButtonToolTip;
         private readonly DanButtonStatus[] danStatus = { new DanButtonStatus(), new DanButtonStatus(), new DanButtonStatus(), new DanButtonStatus() };
@@ -894,24 +905,44 @@ namespace osu_trainer
         }
 
         /// <summary>
-        /// The DanButtons setting, e.g. "Alpha,Beta,Gamma,Delta": one dan per button. A missing or unknown name falls
-        /// back to that button's default.
+        /// A dan buttons setting, e.g. "Alpha,Beta,Gamma,Delta" (DanButtons, 4K) or "Gamma,Azimuth,Zenith,Stellium"
+        /// (DanButtons7K): one dan of <paramref name="system"/> per button. A missing or unknown name falls back to
+        /// that button's default.
         /// </summary>
-        internal static DanLevel[] ParseDanButtons(string setting)
+        internal static DanLevel[] ParseDanButtons(string setting, DanSystem system)
         {
+            var defaults = ReferenceEquals(system, DanTable.SevenKey) ? DefaultDanButtons7K : DefaultDanButtons;
             var names = (setting ?? "").Split(',');
-            var targets = new DanLevel[DefaultDanButtons.Length];
+            var targets = new DanLevel[defaults.Length];
             for (int i = 0; i < targets.Length; i++)
-                targets[i] = (i < names.Length ? DanTable.FindByName(names[i]) : null) ?? DanTable.FindByName(DefaultDanButtons[i]);
+                targets[i] = (i < names.Length ? system.FindByName(names[i]) : null) ?? system.FindByName(defaults[i]);
             return targets;
         }
 
         internal static string FormatDanButtons(DanLevel[] targets) => string.Join(",", targets.Select(t => t.Name));
 
+        // both tables' buttons into their settings (not saved to disk here)
+        private void SaveDanButtons()
+        {
+            Properties.Settings.Default.DanButtons = FormatDanButtons(danTargetsBySystem[DanTable.FourKey]);
+            Properties.Settings.Default.DanButtons7K = FormatDanButtons(danTargetsBySystem[DanTable.SevenKey]);
+        }
+
+        // The buttons follow the loaded map: its key mode's dans. True when that changed what they show.
+        private bool SyncDanSystem()
+        {
+            var system = editor.DanSystem;
+            if (system == null || ReferenceEquals(system, danSystem))
+                return false;
+            danSystem = system;
+            return true;
+        }
+
         private void UpdateDanButtons(object sender, EventArgs e)
         {
+            SyncDanSystem();
             bool visible = editor.State != EditorState.NOT_READY;
-            bool usable = editor.CanSetRateForDan; // 4K osu!mania, and not while a map is being created
+            bool usable = editor.CanSetRateForDan; // 4K or 7K osu!mania, and not while a map is being created
             for (int i = 0; i < danButtons.Length; i++)
             {
                 var button = danButtons[i];
@@ -925,8 +956,9 @@ namespace osu_trainer
                 if (button.Color != color)
                     button.Color = color;
                 danButtonToolTip.SetToolTip(button, string.Format(CultureInfo.InvariantCulture,
-                    "Sets the rate to the lowest at which this map rates as {0} (xdc1 {1} or more).\nAlt+Shift+{2} does the same, then Create Map.",
-                    target.DisplayName, DanTable.FormatRating(target.Threshold), HotkeyForm.KeyName(Hotkeys[i + 1])));
+                    "Sets the rate to the lowest at which this map rates as {3}K {0} ({4} {1} or more).\nAlt+Shift+{2} does the same, then Create Map.",
+                    target.DisplayName, DanTable.FormatRating(target.Threshold), HotkeyForm.KeyName(Hotkeys[i + 1]),
+                    target.System.Keys, target.System.Engine));
                 danButtonToolTip.SetToolTip(danMenuButtons[i], "Choose this button's dan");
             }
         }
@@ -956,7 +988,7 @@ namespace osu_trainer
                 return;
             // the program the key was typed into: the hook sees the key before that window does
             uint keyProcess = ForegroundProcessId();
-            // no 4K osu!mania map loaded, a map being created, or a map osu! has just switched to still being read
+            // no 4K or 7K osu!mania map loaded, a map being created, or a map osu! has just switched to still being read
             // (the press would be for the map on its way out; pressing again once it's in works)
             if (!editor.CanSetRateForDan || editor.IsLoadingBeatmap)
             {
@@ -1053,6 +1085,9 @@ namespace osu_trainer
         {
             if (slot < 0 || slot >= danButtons.Length || !editor.CanSetRateForDan || editor.IsLoadingBeatmap)
                 return null;
+            // the dan this button has for the loaded map's key mode (SetRateForDan turns down any other table's dan)
+            if (SyncDanSystem())
+                UpdateDanButtons(this, EventArgs.Empty);
             var target = danTargets[slot];
             // what the other buttons said last is about a rate this press replaces (a search of theirs is cancelled)
             ClearDanStatuses(except: slot);
@@ -1140,8 +1175,9 @@ namespace osu_trainer
             }
         }
 
-        // One menu for all four buttons: every dan with its icon and threshold, the button's current dan ticked.
-        private ContextMenuStrip BuildDanMenu()
+        // One menu for all four buttons, for each dan table: every dan with its icon and threshold, the button's
+        // current dan ticked.
+        private ContextMenuStrip BuildDanMenu(DanSystem system)
         {
             var menu = new ContextMenuStrip(components)
             {
@@ -1152,9 +1188,9 @@ namespace osu_trainer
                 Font = new Font("Segoe UI", 9F, FontStyle.Bold),
                 BackColor = DarkMenuRenderer.Background,
             };
-            foreach (var level in DanTable.Levels)
+            foreach (var level in system.Levels)
             {
-                if (level.IsExtra && level.Index > 0 && !DanTable.Levels[level.Index - 1].IsExtra)
+                if (level.IsExtra && level.Index > 0 && !system.Levels[level.Index - 1].IsExtra)
                     menu.Items.Add(new ToolStripSeparator());
                 var item = new ToolStripMenuItem(level.DisplayName)
                 {
@@ -1195,8 +1231,9 @@ namespace osu_trainer
             // a search still running for this button's old dan no longer applies
             if (danStatus[slot].Busy)
                 editor.CancelDanRateSearch();
-            danTargets[slot] = level;
-            Properties.Settings.Default.DanButtons = FormatDanButtons(danTargets);
+            // into the item's own table: the menu that was open belongs to it
+            danTargetsBySystem[level.System][slot] = level;
+            SaveDanButtons();
             Properties.Settings.Default.Save();
             ClearDanStatus(slot, danStatus[slot].Id);
             UpdateDanButtons(this, EventArgs.Empty);

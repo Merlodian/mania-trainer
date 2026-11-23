@@ -14,8 +14,9 @@ using System.Windows.Forms;
 namespace osu_trainer
 {
     /// <summary>
-    /// Rates every 4K chart in the osu! Songs folder and writes osu! (stable) collections, one per dan:
-    /// "xdc1 01 - 1st Dan" ... "xdc1 20 - Kappa", and "xdc1 00 - Below 1st Dan" if wanted.
+    /// Rates every 4K and 7K chart in the osu! Songs folder and writes osu! (stable) collections, one per dan:
+    /// "xdc1 01 - 1st Dan" ... "xdc1 20 - Kappa", and "xdc1 00 - Below 1st Dan" if wanted; for 7K, if wanted,
+    /// "xdc7 01 - 0th Dan" ... "xdc7 15 - Stellium" and "xdc7 00 - Below 0th Dan".
     /// </summary>
     public class DanCollectionsForm : Form
     {
@@ -27,6 +28,9 @@ namespace osu_trainer
         private readonly Label songsLabel;
         private readonly OsuCheckBox belowCheck;
         private readonly OsuCheckBox splitCheck;
+        private readonly OsuCheckBox sevenKeyCheck;
+        private readonly OsuCheckBox riceCheck;
+        private readonly Label riceNote;
         private readonly ListView list;
         private readonly Label statusLabel;
         private readonly OsuButton scanButton;
@@ -39,9 +43,13 @@ namespace osu_trainer
         private Task<DanScanResult> scanTask;
         private bool closeWhenStopped;
 
-        // rated charts by dan index (-1: below 1st dan), from the last finished scan
-        private readonly SortedDictionary<int, List<RatedChart>> groups = new SortedDictionary<int, List<RatedChart>>();
+        // rated charts by key count (4, then 7) and dan index in that key count's table (-1: below its lowest dan),
+        // from the last finished scan
+        private readonly SortedDictionary<(int keys, int index), List<RatedChart>> groups = new SortedDictionary<(int keys, int index), List<RatedChart>>();
         private string scannedOsuFolder;
+
+        // What the long note check box's note says before the count of charts it leaves out (one line, 500 px).
+        private const string RiceNoteText = "xdc7 rates long notes as taps: these would rate too low.";
 
         public DanCollectionsForm(string songsFolderHint)
         {
@@ -49,8 +57,8 @@ namespace osu_trainer
             Font = new Font("Segoe UI", 9.75F, FontStyle.Regular, GraphicsUnit.Point);
             BackColor = Colors.FormBg;
             ForeColor = Colors.TextBoxFg;
-            ClientSize = new Size(580, 600);
-            MinimumSize = new Size(480, 500);
+            ClientSize = new Size(580, 682);
+            MinimumSize = new Size(480, 582);
             StartPosition = FormStartPosition.CenterParent;
             MaximizeBox = false;
             MinimizeBox = false;
@@ -62,7 +70,7 @@ namespace osu_trainer
                 Location = new Point(14, 12),
                 Size = new Size(552, 58),
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
-                Text = "Rates every 4K chart in your osu! Songs folder (at 1.00x) and puts them into osu! collections, "
+                Text = "Rates every 4K and 7K chart in your osu! Songs folder (at 1.00x) and puts them into osu! collections, "
                      + "one for each dan. Your other collections are kept, and collection.db is backed up first.",
             };
 
@@ -99,7 +107,7 @@ namespace osu_trainer
             {
                 Location = new Point(12, 152),
                 Size = new Size(380, 24),
-                Text = "Also make a \"Below 1st Dan\" collection",
+                Text = "Also make a \"Below 1st Dan\" collection (7K: \"Below 0th Dan\")",
                 TextOnRight = true,
                 Font = new Font("Segoe UI", 9.75F, FontStyle.Bold),
                 ForeColor = Colors.PaleBlue,
@@ -123,12 +131,41 @@ namespace osu_trainer
                 Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
                 AutoEllipsis = true,
                 ForeColor = Muted,
-                Text = "By thirds of the way to the next dan. Kappa and Below 1st Dan stay whole.",
+                Text = "By thirds of the way to the next dan. The top dan and the Below collections stay whole.",
+            };
+            sevenKeyCheck = new OsuCheckBox
+            {
+                Location = new Point(12, 234),
+                Size = new Size(380, 24),
+                Text = "Also make 7K dan collections (xdc7: 0th Dan to Stellium)",
+                TextOnRight = true,
+                Font = belowCheck.Font,
+                ForeColor = Colors.PaleBlue,
+            };
+            sevenKeyCheck.Width = 40 + TextRenderer.MeasureText(sevenKeyCheck.Text, sevenKeyCheck.Font).Width;
+            riceCheck = new OsuCheckBox
+            {
+                Location = new Point(36, 262),
+                Size = new Size(380, 24),
+                Text = string.Format(CultureInfo.InvariantCulture, "Leave out 7K charts with more than {0:0}% long notes", 100 * Xdc7.LongNoteHeavyShare),
+                TextOnRight = true,
+                Font = belowCheck.Font,
+                ForeColor = Colors.PaleBlue,
+            };
+            riceCheck.Width = 40 + TextRenderer.MeasureText(riceCheck.Text, riceCheck.Font).Width;
+            riceNote = new Label
+            {
+                Location = new Point(64, 286),
+                Size = new Size(502, 20),
+                Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right,
+                AutoEllipsis = true,
+                ForeColor = Muted,
+                Text = RiceNoteText,
             };
 
             list = new ListView
             {
-                Location = new Point(14, 234),
+                Location = new Point(14, 316),
                 Size = new Size(552, 254),
                 Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 View = View.Details,
@@ -151,19 +188,20 @@ namespace osu_trainer
 
             statusLabel = new Label
             {
-                Location = new Point(14, 496),
+                Location = new Point(14, 578),
                 Size = new Size(552, 44),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
                 ForeColor = Muted,
             };
 
-            scanButton = MakeButton("Scan", Color.SteelBlue, new Point(14, 552), new Size(120, 34), AnchorStyles.Bottom | AnchorStyles.Left);
+            scanButton = MakeButton("Scan", Color.SteelBlue, new Point(14, 634), new Size(120, 34), AnchorStyles.Bottom | AnchorStyles.Left);
             scanButton.ProgressColor = Color.FromArgb(90, 170, 255);
-            writeButton = MakeButton("Write collections", Colors.AccentPink2, new Point(142, 552), new Size(170, 34), AnchorStyles.Bottom | AnchorStyles.Left);
-            closeButton = MakeButton("Close", Color.DimGray, new Point(466, 552), new Size(100, 34), AnchorStyles.Bottom | AnchorStyles.Right);
+            writeButton = MakeButton("Write collections", Colors.AccentPink2, new Point(142, 634), new Size(170, 34), AnchorStyles.Bottom | AnchorStyles.Left);
+            closeButton = MakeButton("Close", Color.DimGray, new Point(466, 634), new Size(100, 34), AnchorStyles.Bottom | AnchorStyles.Right);
             writeButton.Enabled = false;
 
-            Controls.AddRange(new Control[] { intro, folderLabel, osuFolderBox, browseButton, songsLabel, belowCheck, splitCheck, splitNote, list, statusLabel, scanButton, writeButton, closeButton });
+            Controls.AddRange(new Control[] { intro, folderLabel, osuFolderBox, browseButton, songsLabel, belowCheck, splitCheck, splitNote,
+                sevenKeyCheck, riceCheck, riceNote, list, statusLabel, scanButton, writeButton, closeButton });
 
             progressTimer = new System.Windows.Forms.Timer { Interval = 100 };
             progressTimer.Tick += (s, e) => ShowProgress();
@@ -172,6 +210,8 @@ namespace osu_trainer
             osuFolderBox.TextChanged += (s, e) => FolderChanged();
             belowCheck.CheckedChanged += (s, e) => ShowGroups();
             splitCheck.CheckedChanged += (s, e) => ShowGroups();
+            sevenKeyCheck.CheckedChanged += (s, e) => ShowGroups();
+            riceCheck.CheckedChanged += (s, e) => ShowGroups();
             scanButton.Click += ScanOrStop;
             writeButton.Click += Write;
             closeButton.Click += (s, e) => Close();
@@ -180,6 +220,9 @@ namespace osu_trainer
             var saved = DanCollectionsSettings.Load();
             belowCheck.Checked = saved.Below;
             splitCheck.Checked = saved.Split;
+            sevenKeyCheck.Checked = saved.SevenKey;
+            riceCheck.Checked = saved.SkipLongNoteHeavy;
+            ShowGroups(); // the long note box follows the 7K one, also when neither changed
             string folder = OsuCollections.IsOsuFolder(saved.OsuFolder) ? saved.OsuFolder : OsuCollections.DetectOsuFolders(songsFolderHint).FirstOrDefault();
             osuFolderBox.Text = folder ?? "";
             FolderChanged(); // also when the text stayed empty, which raises no TextChanged
@@ -270,7 +313,7 @@ namespace osu_trainer
             }
 
             string folder = OsuFolder;
-            DanCollectionsSettings.Save(new DanCollectionsSettings { OsuFolder = folder, Below = belowCheck.Checked, Split = splitCheck.Checked });
+            DanCollectionsSettings.Save(CurrentSettings(folder));
             groups.Clear();
             list.Items.Clear();
             writeButton.Enabled = false;
@@ -323,11 +366,20 @@ namespace osu_trainer
             }
 
             scannedOsuFolder = folder;
+            int fourKey = 0, sevenKey = 0;
             foreach (var chart in result.Charts)
             {
-                int index = DanTable.Classify(chart.Rating)?.Index ?? -1;
-                if (!groups.TryGetValue(index, out var charts))
-                    groups[index] = charts = new List<RatedChart>();
+                // each chart against its own key count's dans
+                var system = DanTable.ForKeys(chart.Keys);
+                if (system == null)
+                    continue;
+                if (chart.Keys == 7)
+                    sevenKey++;
+                else
+                    fourKey++;
+                var key = (chart.Keys, system.Classify(chart.Rating)?.Index ?? -1);
+                if (!groups.TryGetValue(key, out var charts))
+                    groups[key] = charts = new List<RatedChart>();
                 charts.Add(chart);
             }
             foreach (var charts in groups.Values)
@@ -337,8 +389,9 @@ namespace osu_trainer
             string time = result.Elapsed.TotalSeconds < 90
                 ? string.Format(inv, "{0:0}s", Math.Max(1, result.Elapsed.TotalSeconds))
                 : string.Format(inv, "{0}m {1:00}s", (int)result.Elapsed.TotalMinutes, result.Elapsed.Seconds);
-            statusLabel.Text = string.Format(inv, "{0:N0} 4K charts rated in {1}.", result.Charts.Count, time)
-                + (result.Unrated > 0 ? string.Format(inv, " {0:N0} couldn't be rated and are left out.", result.Unrated) : "");
+            statusLabel.Text = string.Format(inv, "{0:N0} 4K and {1:N0} 7K charts rated in {2}.", fourKey, sevenKey, time)
+                + (result.Unrated > 0 ? string.Format(inv, " {0:N0} couldn't be rated and are left out.", result.Unrated) : "")
+                + (Xdc7.IsAvailable ? "" : " 7K charts were passed over: " + Xdc7.LoadError + ".");
             ShowGroups();
         }
 
@@ -361,26 +414,35 @@ namespace osu_trainer
 
         // ---- the collections ------------------------------------------------------------------------------------
 
+        // 7K charts the long note check box leaves out (when it is ticked and 7K is wanted at all)
+        private bool LeftOut(RatedChart chart) => riceCheck.Checked && chart.LongNoteHeavy;
+
         private List<(string name, List<string> hashes, List<RatedChart> charts, DanLevel dan)> DanCollections()
         {
             var result = new List<(string, List<string>, List<RatedChart>, DanLevel)>();
             foreach (var kv in groups)
             {
-                if (kv.Key < 0 && !belowCheck.Checked)
+                var system = DanTable.ForKeys(kv.Key.keys);
+                if (system == null || (kv.Key.keys == 7 && !sevenKeyCheck.Checked))
                     continue;
-                var dan = kv.Key < 0 ? null : DanTable.Levels[kv.Key];
-                // Kappa has no next dan to measure towards, and below 1st dan isn't a dan: both stay whole
-                if (splitCheck.Checked && dan != null && DanTable.Next(dan) != null)
+                if (kv.Key.index < 0 && !belowCheck.Checked)
+                    continue;
+                var all = kv.Value.Where(c => !LeftOut(c)).ToList();
+                if (all.Count == 0)
+                    continue;
+                var dan = kv.Key.index < 0 ? null : system.Levels[kv.Key.index];
+                // the top dan has no next dan to measure towards, and below the lowest dan isn't a dan: both stay whole
+                if (splitCheck.Checked && dan != null && system.Next(dan) != null)
                 {
                     for (int tier = 0; tier < OsuCollections.TierNames.Length; tier++)
                     {
-                        var charts = kv.Value.Where(c => OsuCollections.Tier(c.Rating) == tier).ToList();
+                        var charts = all.Where(c => OsuCollections.Tier(system, c.Rating) == tier).ToList();
                         if (charts.Count > 0)
                             result.Add((OsuCollections.DanTierCollectionName(dan, tier), Hashes(charts), charts, dan));
                     }
                 }
                 else
-                    result.Add((OsuCollections.DanCollectionName(dan), Hashes(kv.Value), kv.Value, dan));
+                    result.Add((OsuCollections.DanCollectionName(system, dan), Hashes(all), all, dan));
             }
             return result;
         }
@@ -390,6 +452,13 @@ namespace osu_trainer
 
         private void ShowGroups()
         {
+            // the long note box only means something while 7K collections are made
+            riceCheck.Enabled = sevenKeyCheck.Checked;
+            int leftOut = sevenKeyCheck.Checked
+                ? groups.Where(kv => kv.Key.keys == 7).Sum(kv => kv.Value.Count(LeftOut))
+                : 0;
+            riceNote.Text = RiceNoteText + (leftOut > 0 ? string.Format(CultureInfo.InvariantCulture, " {0:N0} left out.", leftOut) : "");
+
             list.BeginUpdate();
             list.Items.Clear();
             var cols = DanCollections();
@@ -427,7 +496,7 @@ namespace osu_trainer
                     "Dan collections", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
                 return;
 
-            DanCollectionsSettings.Save(new DanCollectionsSettings { OsuFolder = folder, Below = belowCheck.Checked, Split = splitCheck.Checked });
+            DanCollectionsSettings.Save(CurrentSettings(folder));
             string backup;
             int kept;
             try
@@ -449,6 +518,15 @@ namespace osu_trainer
             message += "\n\nStart osu! to see them.";
             MessageBox.Show(this, message, "Dan collections", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
+
+        private DanCollectionsSettings CurrentSettings(string folder) => new DanCollectionsSettings
+        {
+            OsuFolder = folder,
+            Below = belowCheck.Checked,
+            Split = splitCheck.Checked,
+            SevenKey = sevenKeyCheck.Checked,
+            SkipLongNoteHeavy = riceCheck.Checked,
+        };
 
         protected override void OnFormClosing(FormClosingEventArgs e)
         {
@@ -479,6 +557,8 @@ namespace osu_trainer
         public string OsuFolder = "";
         public bool Below = true;
         public bool Split = false;
+        public bool SevenKey = true;            // also make the 7K dan collections
+        public bool SkipLongNoteHeavy = true;   // ... without 7K charts that are mostly long notes to xdc7's eye
 
         private static string FilePath => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "mania-trainer", "dan-collections.txt");
@@ -500,6 +580,10 @@ namespace osu_trainer
                         s.Below = value != "0";
                     else if (key == "split")
                         s.Split = value == "1";
+                    else if (key == "7k")
+                        s.SevenKey = value != "0";
+                    else if (key == "7k-skip-ln")
+                        s.SkipLongNoteHeavy = value != "0";
                 }
             }
             catch (Exception) { }
@@ -511,7 +595,14 @@ namespace osu_trainer
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(FilePath));
-                File.WriteAllLines(FilePath, new[] { "osu=" + s.OsuFolder, "below=" + (s.Below ? "1" : "0"), "split=" + (s.Split ? "1" : "0") });
+                File.WriteAllLines(FilePath, new[]
+                {
+                    "osu=" + s.OsuFolder,
+                    "below=" + (s.Below ? "1" : "0"),
+                    "split=" + (s.Split ? "1" : "0"),
+                    "7k=" + (s.SevenKey ? "1" : "0"),
+                    "7k-skip-ln=" + (s.SkipLongNoteHeavy ? "1" : "0"),
+                });
             }
             catch (Exception) { }
         }

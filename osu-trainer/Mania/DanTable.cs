@@ -7,11 +7,15 @@ using System.Reflection;
 
 namespace osu_trainer.Mania
 {
-    /// <summary>One osu!mania 4K dan (1st to 10th, then the EXTRA dans Alpha to Kappa).</summary>
+    /// <summary>
+    /// One dan of a key mode's dan table: 1st to 10th and the EXTRA dans Alpha to Kappa in 4K; 0th to 10th, then
+    /// Gamma, Azimuth, Zenith and Stellium in 7K. A dan belongs to its table: 4K's Gamma and 7K's Gamma are two dans.
+    /// </summary>
     public sealed class DanLevel
     {
-        internal DanLevel(int index, string name, string displayName, double threshold, Color color, string iconResource)
+        internal DanLevel(DanSystem system, int index, string name, string displayName, double threshold, Color color, string iconResource, bool isExtra)
         {
+            System = system;
             Index = index;
             Name = name;
             DisplayName = displayName;
@@ -19,6 +23,7 @@ namespace osu_trainer.Mania
             Color = color;
             TextColor = ReadableOnDark(color);
             IconResource = iconResource;
+            IsExtra = isExtra;
         }
 
         // A colour too dark to read on the dark window (Kappa's black) is lightened towards white, keeping its hue,
@@ -35,16 +40,19 @@ namespace osu_trainer.Mania
             return Color.FromArgb(Lift(c.R), Lift(c.G), Lift(c.B));
         }
 
-        /// <summary>0 for 1st dan, 19 for Kappa.</summary>
+        /// <summary>The table this dan is in (<see cref="DanTable.FourKey"/> or <see cref="DanTable.SevenKey"/>).</summary>
+        public DanSystem System { get; }
+
+        /// <summary>Position in its table: 0 for the lowest dan (4K's 1st, 7K's 0th).</summary>
         public int Index { get; }
 
-        /// <summary>"1st" ... "10th", "Alpha" ... "Kappa".</summary>
+        /// <summary>"1st" ... "10th", "Alpha" ... "Kappa"; in 7K "0th" ... "10th", "Gamma" ... "Stellium".</summary>
         public string Name { get; }
 
         /// <summary>"1st Dan" ... "10th Dan", "Alpha" ... "Kappa".</summary>
         public string DisplayName { get; }
 
-        /// <summary>Lowest xdc1 rating (at 1.0x) that counts as this dan.</summary>
+        /// <summary>Lowest rating (at 1.0x, from the table's calculator) that counts as this dan.</summary>
         public double Threshold { get; }
 
         /// <summary>The dan's colour, as its dan button is filled.</summary>
@@ -58,70 +66,74 @@ namespace osu_trainer.Mania
 
         internal string IconResource { get; }
 
-        /// <summary>True for the EXTRA (Greek letter) dans, which have their own icons.</summary>
-        public bool IsExtra => IconResource != null;
+        /// <summary>True for the dans after 10th, which the dan menu lists apart.</summary>
+        public bool IsExtra { get; }
 
         public override string ToString() => DisplayName;
     }
 
     /// <summary>
-    /// Maps an xdc1 rating to a dan.
-    ///
-    /// Each threshold is the mean xdc1 rating (at 1.0x) of every chart of that dan in the user's
-    /// "Dan Beatmaps" folder (1st to Eta) and "More Dans" folder (Theta, Iota and Kappa, from Dan ~ REFORM ~
-    /// FINAL (Ext.)): the full dan course, its Jack, Tech, Speed and Stamina maps, and every sample
-    /// course and sample map for that dan. Intro dans are not included. 246 charts were rated in total.
-    /// A chart is shown as the highest dan whose threshold its rating reaches.
-    ///
-    /// Regenerate with tools/calibrate_dans.py; per-chart ratings are in tools/dan_calibration.csv.
+    /// The dans of one key mode and the calculator its ratings come from. Every question about a dan ("which dan is
+    /// this rating", "what comes next") is asked of a table, so a 4K rating can't be read against 7K dans.
     /// </summary>
-    public static class DanTable
+    public sealed class DanSystem
     {
-        public static readonly IReadOnlyList<DanLevel> Levels = new[]
+        internal struct Spec
         {
-            new DanLevel(0,  "1st",     "1st Dan",  28.7147, Color.FromArgb(66, 144, 251),  null),
-            new DanLevel(1,  "2nd",     "2nd Dan",  32.2334, Color.FromArgb(79, 192, 255),  null),
-            new DanLevel(2,  "3rd",     "3rd Dan",  33.5844, Color.FromArgb(79, 255, 213),  null),
-            new DanLevel(3,  "4th",     "4th Dan",  37.3902, Color.FromArgb(124, 255, 79),  null),
-            new DanLevel(4,  "5th",     "5th Dan",  42.4576, Color.FromArgb(246, 240, 92),  null),
-            new DanLevel(5,  "6th",     "6th Dan",  45.8667, Color.FromArgb(255, 184, 98),  null),
-            new DanLevel(6,  "7th",     "7th Dan",  47.7026, Color.FromArgb(255, 128, 104), null),
-            new DanLevel(7,  "8th",     "8th Dan",  51.5435, Color.FromArgb(255, 78, 111),  null),
-            new DanLevel(8,  "9th",     "9th Dan",  54.0190, Color.FromArgb(198, 69, 184),  null),
-            new DanLevel(9,  "10th",    "10th Dan", 56.4295, Color.FromArgb(133, 120, 240), null),
-            // EXTRA dan colours chosen by the user: pink, dark blue, dark green, orange, purple, light blue, red,
-            // dark red, grey, black
-            new DanLevel(10, "Alpha",   "Alpha",    59.1441, Color.FromArgb(255, 120, 200), "alpha"),
-            new DanLevel(11, "Beta",    "Beta",     61.3607, Color.FromArgb(48, 84, 220),   "beta"),
-            new DanLevel(12, "Gamma",   "Gamma",    64.8469, Color.FromArgb(40, 160, 72),   "gamma"),
-            new DanLevel(13, "Delta",   "Delta",    70.5580, Color.FromArgb(255, 146, 60),  "delta"),
-            new DanLevel(14, "Epsilon", "Epsilon",  79.3652, Color.FromArgb(168, 96, 240),  "epsilon"),
-            new DanLevel(15, "Zeta",    "Zeta",     84.8299, Color.FromArgb(128, 200, 255), "zeta"),
-            new DanLevel(16, "Eta",     "Eta",      90.1403, Color.FromArgb(236, 54, 70),   "eta"),
-            new DanLevel(17, "Theta",   "Theta",    98.1759, Color.FromArgb(184, 26, 40),   "theta"),
-            new DanLevel(18, "Iota",    "Iota",    104.1413, Color.FromArgb(160, 160, 168), "iota"),
-            new DanLevel(19, "Kappa",   "Kappa",   108.2573, Color.FromArgb(16, 16, 20),    "kappa"),
-        };
+            public string Name, DisplayName, Icon;
+            public double Threshold;
+            public Color Color;
+            public bool Extra;
 
-        /// <summary>A rating (or threshold) rounded to the two decimals the UI shows.</summary>
-        public static double RoundForDisplay(double rating) => Math.Round(rating, 2, MidpointRounding.AwayFromZero);
+            public Spec(string name, string displayName, double threshold, Color color, string icon = null, bool extra = false)
+            {
+                Name = name;
+                DisplayName = displayName;
+                Threshold = threshold;
+                Color = color;
+                Icon = icon;
+                Extra = extra;
+            }
+        }
 
-        /// <summary>A rating (or threshold) as the UI shows it, e.g. "42.46". Classify works from the same value.</summary>
-        public static string FormatRating(double rating) => RoundForDisplay(rating).ToString("0.00", CultureInfo.InvariantCulture);
+        internal DanSystem(int keys, string engine, Spec[] specs)
+        {
+            Keys = keys;
+            Engine = engine;
+            var levels = new DanLevel[specs.Length];
+            for (int i = 0; i < specs.Length; i++)
+                levels[i] = new DanLevel(this, i, specs[i].Name, specs[i].DisplayName, specs[i].Threshold, specs[i].Color, specs[i].Icon, specs[i].Extra);
+            Levels = levels;
+        }
+
+        /// <summary>The key count this table is for: 4 or 7.</summary>
+        public int Keys { get; }
+
+        /// <summary>"xdc1" (4K) or "xdc7" (7K): the calculator, as the window and the collection names call it.</summary>
+        public string Engine { get; }
+
+        /// <summary>The dans, easiest first.</summary>
+        public IReadOnlyList<DanLevel> Levels { get; }
+
+        /// <summary>What a rating under the lowest dan is called: "Below 1st Dan" (4K), "Below 0th Dan" (7K).</summary>
+        public string BelowLowest => "Below " + Levels[0].DisplayName;
+
+        /// <summary>The same for the badge in the main window: "Below 1st", "Below 0th".</summary>
+        public string BelowLowestShort => "Below " + Levels[0].Name;
 
         /// <summary>
-        /// The dan a rating corresponds to, or null when it is below the 1st dan threshold.
+        /// The dan a rating corresponds to, or null when it is below the lowest dan's threshold.
         /// The rating is rounded to the two decimals the UI shows, so the dan always agrees with the number.
         /// </summary>
-        public static DanLevel Classify(double rating)
+        public DanLevel Classify(double rating)
         {
             if (double.IsNaN(rating) || double.IsInfinity(rating))
                 return null;
-            double shown = RoundForDisplay(rating);
+            double shown = DanTable.RoundForDisplay(rating);
             DanLevel result = null;
             foreach (var level in Levels)
             {
-                if (shown >= RoundForDisplay(level.Threshold))
+                if (shown >= DanTable.RoundForDisplay(level.Threshold))
                     result = level;
                 else
                     break;
@@ -130,7 +142,7 @@ namespace osu_trainer.Mania
         }
 
         /// <summary>The dan with this name ("1st" ... "Kappa", or "1st Dan" ...; any case), or null.</summary>
-        public static DanLevel FindByName(string name)
+        public DanLevel FindByName(string name)
         {
             string wanted = name?.Trim();
             foreach (var level in Levels)
@@ -140,18 +152,23 @@ namespace osu_trainer.Mania
             return null;
         }
 
-        /// <summary>The next harder dan, the first dan when <paramref name="level"/> is null, or null after Kappa.</summary>
-        public static DanLevel Next(DanLevel level)
+        /// <summary>
+        /// The next harder dan, the lowest dan when <paramref name="level"/> is null, or null after the highest (and
+        /// for a dan of another table).
+        /// </summary>
+        public DanLevel Next(DanLevel level)
         {
+            if (level != null && !ReferenceEquals(level.System, this))
+                return null;
             int next = level == null ? 0 : level.Index + 1;
             return next < Levels.Count ? Levels[next] : null;
         }
 
         /// <summary>
         /// How far a rating has got from its dan's threshold towards the next one, 0 to 1.
-        /// 1 at Kappa and above; for ratings below 1st dan, measured from 0.
+        /// 1 at the highest dan and above; for ratings below the lowest dan, measured from 0.
         /// </summary>
-        public static float ProgressToNext(double rating)
+        public float ProgressToNext(double rating)
         {
             var current = Classify(rating);
             var next = Next(current);
@@ -164,9 +181,91 @@ namespace osu_trainer.Mania
             return (float)Math.Max(0, Math.Min(1, (rating - from) / span));
         }
 
+        public override string ToString() => Keys + "K";
+    }
+
+    /// <summary>
+    /// The dan tables.
+    ///
+    /// 4K (xdc1): each threshold is the mean xdc1 rating (at 1.0x) of every chart of that dan in the user's
+    /// "Dan Beatmaps" folder (1st to Eta) and "More Dans" folder (Theta, Iota and Kappa, from Dan ~ REFORM ~
+    /// FINAL (Ext.)): the full dan course, its Jack, Tech, Speed and Stamina maps, and every sample
+    /// course and sample map for that dan. Intro dans are not included. 246 charts were rated in total.
+    /// Regenerate with tools/calibrate_dans.py; per-chart ratings are in tools/dan_calibration.csv.
+    ///
+    /// 7K (xdc7, rice only): each threshold is where a smooth curve (a cubic in the dan number, least squares)
+    /// through the xdc7 ratings of the 60 charts of the 7K Regular Dan practice packs (0th to Stellium, one Jack,
+    /// Speed, Stream and Tech chart for each dan) passes that dan. With four charts to a dan the plain means
+    /// wobble, so the curve stands in for them. Regenerate with tools/calibrate_dans7.py, which writes the
+    /// thresholds to tools/dan7_curve.json and the per-chart ratings to tools/dan7_calibration.csv.
+    ///
+    /// In both, a chart is shown as the highest dan whose threshold its rating reaches: a chart rated like the
+    /// average chart of a dan sits at the very start of that dan.
+    /// </summary>
+    public static class DanTable
+    {
+        public static readonly DanSystem FourKey = new DanSystem(4, "xdc1", new[]
+        {
+            new DanSystem.Spec("1st",     "1st Dan",  28.7147, Color.FromArgb(66, 144, 251)),
+            new DanSystem.Spec("2nd",     "2nd Dan",  32.2334, Color.FromArgb(79, 192, 255)),
+            new DanSystem.Spec("3rd",     "3rd Dan",  33.5844, Color.FromArgb(79, 255, 213)),
+            new DanSystem.Spec("4th",     "4th Dan",  37.3902, Color.FromArgb(124, 255, 79)),
+            new DanSystem.Spec("5th",     "5th Dan",  42.4576, Color.FromArgb(246, 240, 92)),
+            new DanSystem.Spec("6th",     "6th Dan",  45.8667, Color.FromArgb(255, 184, 98)),
+            new DanSystem.Spec("7th",     "7th Dan",  47.7026, Color.FromArgb(255, 128, 104)),
+            new DanSystem.Spec("8th",     "8th Dan",  51.5435, Color.FromArgb(255, 78, 111)),
+            new DanSystem.Spec("9th",     "9th Dan",  54.0190, Color.FromArgb(198, 69, 184)),
+            new DanSystem.Spec("10th",    "10th Dan", 56.4295, Color.FromArgb(133, 120, 240)),
+            // EXTRA dan colours chosen by the user: pink, dark blue, dark green, orange, purple, light blue, red,
+            // dark red, grey, black
+            new DanSystem.Spec("Alpha",   "Alpha",    59.1441, Color.FromArgb(255, 120, 200), "alpha",   true),
+            new DanSystem.Spec("Beta",    "Beta",     61.3607, Color.FromArgb(48, 84, 220),   "beta",    true),
+            new DanSystem.Spec("Gamma",   "Gamma",    64.8469, Color.FromArgb(40, 160, 72),   "gamma",   true),
+            new DanSystem.Spec("Delta",   "Delta",    70.5580, Color.FromArgb(255, 146, 60),  "delta",   true),
+            new DanSystem.Spec("Epsilon", "Epsilon",  79.3652, Color.FromArgb(168, 96, 240),  "epsilon", true),
+            new DanSystem.Spec("Zeta",    "Zeta",     84.8299, Color.FromArgb(128, 200, 255), "zeta",    true),
+            new DanSystem.Spec("Eta",     "Eta",      90.1403, Color.FromArgb(236, 54, 70),   "eta",     true),
+            new DanSystem.Spec("Theta",   "Theta",    98.1759, Color.FromArgb(184, 26, 40),   "theta",   true),
+            new DanSystem.Spec("Iota",    "Iota",    104.1413, Color.FromArgb(160, 160, 168), "iota",    true),
+            new DanSystem.Spec("Kappa",   "Kappa",   108.2573, Color.FromArgb(16, 16, 20),    "kappa",   true),
+        });
+
+        public static readonly DanSystem SevenKey = new DanSystem(7, "xdc7", new[]
+        {
+            // 1st to 10th keep their 4K colours. 0th and the four dans after 10th are placeholders until the user
+            // picks their own (Gamma borrows 4K Gamma's green and its icon; the other three have no icon yet).
+            new DanSystem.Spec("0th",      "0th Dan",  29.0978, Color.FromArgb(160, 176, 204)),
+            new DanSystem.Spec("1st",      "1st Dan",  33.3770, Color.FromArgb(66, 144, 251)),
+            new DanSystem.Spec("2nd",      "2nd Dan",  36.8943, Color.FromArgb(79, 192, 255)),
+            new DanSystem.Spec("3rd",      "3rd Dan",  39.8096, Color.FromArgb(79, 255, 213)),
+            new DanSystem.Spec("4th",      "4th Dan",  42.2828, Color.FromArgb(124, 255, 79)),
+            new DanSystem.Spec("5th",      "5th Dan",  44.4739, Color.FromArgb(246, 240, 92)),
+            new DanSystem.Spec("6th",      "6th Dan",  46.5428, Color.FromArgb(255, 184, 98)),
+            new DanSystem.Spec("7th",      "7th Dan",  48.6493, Color.FromArgb(255, 128, 104)),
+            new DanSystem.Spec("8th",      "8th Dan",  50.9535, Color.FromArgb(255, 78, 111)),
+            new DanSystem.Spec("9th",      "9th Dan",  53.6151, Color.FromArgb(198, 69, 184)),
+            new DanSystem.Spec("10th",     "10th Dan", 56.7942, Color.FromArgb(133, 120, 240)),
+            new DanSystem.Spec("Gamma",    "Gamma",    60.6506, Color.FromArgb(40, 160, 72),   "gamma", true),
+            new DanSystem.Spec("Azimuth",  "Azimuth",  65.3443, Color.FromArgb(255, 146, 60),  null,    true),
+            new DanSystem.Spec("Zenith",   "Zenith",   71.0352, Color.FromArgb(236, 54, 70),   null,    true),
+            new DanSystem.Spec("Stellium", "Stellium", 77.8831, Color.FromArgb(168, 96, 240),  null,    true),
+        });
+
+        /// <summary>Every table, 4K first.</summary>
+        public static readonly IReadOnlyList<DanSystem> Systems = new[] { FourKey, SevenKey };
+
+        /// <summary>The table for a key count, or null when that key count has no calculator (anything but 4K and 7K).</summary>
+        public static DanSystem ForKeys(int keys) => keys == 4 ? FourKey : keys == 7 ? SevenKey : null;
+
+        /// <summary>A rating (or threshold) rounded to the two decimals the UI shows.</summary>
+        public static double RoundForDisplay(double rating) => Math.Round(rating, 2, MidpointRounding.AwayFromZero);
+
+        /// <summary>A rating (or threshold) as the UI shows it, e.g. "42.46". Classify works from the same value.</summary>
+        public static string FormatRating(double rating) => RoundForDisplay(rating).ToString("0.00", CultureInfo.InvariantCulture);
+
         private static readonly ConcurrentDictionary<string, Image> iconCache = new ConcurrentDictionary<string, Image>();
 
-        /// <summary>The Greek-letter icon of an EXTRA dan (64x64, transparent), or null for 1st to 10th dan.</summary>
+        /// <summary>A dan's own icon (64x64, transparent), or null for a dan without one.</summary>
         public static Image GetIcon(DanLevel level)
         {
             if (level?.IconResource == null)
