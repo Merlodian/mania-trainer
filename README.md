@@ -3,6 +3,8 @@ A version of [osu-trainer](https://github.com/FunOrange/osu-trainer) 1.8.0 (by F
 
 ![](osu-trainer/images/gui.png)
 
+![7K](osu-trainer/images/gui-7k.png)
+
 ![Dan Collections](osu-trainer/images/dan-collections.png)
 
 ### Additional Notes
